@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>測試 QR Code - 咖啡地圖</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        #qrcode {
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            display: inline-block;
+        }
+        .code-text {
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            word-break: break-all;
+        }
+        .instructions {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            text-align: left;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+        .note {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>☕ 咖啡地圖測試 QR Code</h1>
+        <p class="subtitle">掃描此 QR Code 來測試抽卡功能</p>
+        
+        <div id="qrcode"></div>
+        
+        <div class="code-text" id="codeText">載入中...</div>
+        
+        <div class="instructions">
+            <h3>📱 測試步驟</h3>
+            <ol>
+                <li>在另一個視窗或裝置開啟 <strong>http://localhost:5173</strong></li>
+                <li>使用 LINE 登入</li>
+                <li>點擊「掃描 QR Code」按鈕</li>
+                <li>允許相機權限</li>
+                <li>掃描此頁面的 QR Code</li>
+                <li>查看抽卡動畫和結果！</li>
+            </ol>
+        </div>
+
+        <div class="note">
+            <strong>💡 提示：</strong> 如果在同一台電腦測試，可以將此頁面顯示在螢幕上，然後用手機掃描。或者使用兩個瀏覽器視窗。
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script>
+        // 從後端獲取第一個測試 QR Code
+        const testCode = 'COFFEE-57B9CC3D94F2';
+        
+        // 顯示代碼
+        document.getElementById('codeText').textContent = testCode;
+        
+        // 生成 QR Code
+        QRCode.toCanvas(
+            document.createElement('canvas'),
+            testCode,
+            {
+                width: 300,
+                margin: 2,
+                color: {
+                    dark: '#000000',
+                    light: '#FFFFFF'
+                }
+            },
+            function (error, canvas) {
+                if (error) {
+                    console.error(error);
+                    document.getElementById('qrcode').innerHTML = '<p style="color: red;">QR Code 生成失敗</p>';
+                } else {
+                    document.getElementById('qrcode').appendChild(canvas);
+                }
+            }
+        );
+    </script>
+</body>
+</html>
