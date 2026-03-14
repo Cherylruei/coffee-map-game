@@ -1,0 +1,13 @@
+{
+  "rewrites": [
+    { "source": "/api/auth/line/callback",      "destination": "/api/auth/line-callback" },
+    { "source": "/api/user/collection",          "destination": "/api/user/collection" },
+    { "source": "/api/gacha/pull",               "destination": "/api/gacha/pull" },
+    { "source": "/api/share/create",             "destination": "/api/share/create" },
+    { "source": "/api/share/claim",              "destination": "/api/share/claim" },
+    { "source": "/api/admin/qrcode/generate",    "destination": "/api/admin/qrcode/generate" },
+    { "source": "/api/admin/qrcode/list",        "destination": "/api/admin/qrcode/list" },
+    { "source": "/api/admin/stats",              "destination": "/api/admin/stats" },
+    { "source": "/(.*)",                         "destination": "/index.html" }
+  ]
+}
