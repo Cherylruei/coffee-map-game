@@ -20,6 +20,7 @@ cd backend
 npm run dev
 ```
 後端將運行於: http://localhost:3001 (API)
+店家後台: http://localhost:3001/admin-qr.html (生成店家專屬 QR Code)
 
 ### 2. 啟動前端
 
@@ -38,3 +39,5 @@ npm run dev
 ## 環境變數
 
 請確保 `backend/.env` 包含正確的 Supabase 設定。
+
+104-portfolio
