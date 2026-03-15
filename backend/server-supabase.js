@@ -30,10 +30,21 @@ const CONFIG = {
 
 // ADMIN_TOKEN 移到最上面，所有路由都能用到
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin-secret-token';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+// 允許的來源：環境變數 ALLOWED_ORIGINS 以逗號分隔，預設包含本地開發
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : ['http://localhost:5173', 'http://localhost:5501'];
 
 // 中間件
-app.use(cors({ origin: '*', credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    // 允許無 origin（如 curl、Postman、行動 app）或在白名單內的來源
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.static('public'));
 
