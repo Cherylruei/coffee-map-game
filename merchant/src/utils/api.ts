@@ -1,9 +1,10 @@
 const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const API_BASE = isLocal
-  ? 'http://localhost:3001'
-  : window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/)
-    ? `${window.location.protocol}//${window.location.hostname}:3001` // 區網 IP 測試
-    : 'https://your-production-api.vercel.app'; // 部署後填真實網址
+const API_BASE = import.meta.env.VITE_API_BASE ||
+  (isLocal
+    ? 'http://localhost:3001'
+    : window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/)
+      ? `${window.location.protocol}//${window.location.hostname}:3001`
+      : 'https://coffee-map-game-backend.vercel.app');
 
 export { API_BASE };
 
