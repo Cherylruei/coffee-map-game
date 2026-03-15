@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LoginButton } from './components/Auth/LoginButton';
 import { UserAvatar } from './components/Auth/UserAvatar';
 import { QRScanner } from './components/QRScanner/Scanner';
@@ -25,8 +25,10 @@ function App() {
   } | null>(null);
   const [treasureOpen, setTreasureOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [showChestHint, setShowChestHint] = useState(false);
+  // 記錄抽卡前的收藏數，判斷是否為第一張
+  const collectionCountRef = useRef(0);
 
-  // 載入收藏資料
   const loadCollection = async () => {
     try {
       const response = await userAPI.getCollection();
@@ -47,10 +49,8 @@ function App() {
 
     if (code && !lineCodeProcessing) {
       lineCodeProcessing = true;
-      // 立即清掉 URL 中的 code，避免重新整理時再次使用過期 code
       window.history.replaceState({}, document.title, '/');
 
-      // 用 async IIFE，所有 setState 都在 await 之後執行，避免 cascading renders
       (async () => {
         try {
           const redirectUri = window.location.origin;
@@ -69,7 +69,6 @@ function App() {
         try {
           const response = await shareAPI.claim(shareCode);
           if (response.data.success) {
-            // 所有 setState 都在 await 之後，React 18 自動 batch 合併
             setGachaResult({
               cardId: response.data.card.id,
               isNew: response.data.isNew,
@@ -87,8 +86,20 @@ function App() {
   }, [isAuthenticated]);
 
   // QR Code 掃描成功處理
-  const handleQRScan = async (qrCode: string) => {
-    setShowScanner(false);
+  // 不在此處關閉 scanner，等動畫結束才返回主頁，讓使用者看到卡片飛入寶箱
+  const handleQRScan = async (rawQR: string) => {
+    // 記錄抽卡前的收藏數
+    collectionCountRef.current = Object.keys(collection).length;
+
+    // 支援掃到完整 URL（如 https://xxx/?qr=COFFEE-XXXX）或直接是代碼
+    let qrCode = rawQR;
+    try {
+      const url = new URL(rawQR);
+      const param = url.searchParams.get('qr');
+      if (param) qrCode = param;
+    } catch {
+      // rawQR 本身就是代碼，直接使用
+    }
 
     try {
       const response = await gachaAPI.pull(qrCode);
@@ -98,14 +109,22 @@ function App() {
           cardId: response.data.card.id,
           isNew: response.data.isNew,
         });
-
-        // 更新收藏
         setCollection(response.data.collection);
         addCard(response.data.card.id);
       }
     } catch (error: any) {
       console.error('抽卡失敗:', error);
       alert(error.response?.data?.message || '抽卡失敗，請稍後再試');
+    }
+  };
+
+  // 動畫結束後：關閉 scanner 返回主頁，若是第一張顯示寶箱提示
+  const handleGachaComplete = () => {
+    const wasFirstCard = collectionCountRef.current === 0;
+    setGachaResult(null);
+    setShowScanner(false); // 返回主掃描頁
+    if (wasFirstCard) {
+      setShowChestHint(true);
     }
   };
 
@@ -152,22 +171,23 @@ function App() {
         )}
       </div>
 
-      {/* 抽卡動畫 */}
+      {/* 抽卡動畫 — 在 scanner 之上，動畫結束才關 scanner */}
       {gachaResult && (
         <GachaAnimation
           cardId={gachaResult.cardId}
           isNew={gachaResult.isNew}
-          onComplete={() => setGachaResult(null)}
+          onComplete={handleGachaComplete}
         />
       )}
 
-      {/* 側邊欄 */}
+      {/* 側邊欄 — z-index 10001，在抽卡動畫 collecting 時可見（收卡飛向寶箱） */}
       {isAuthenticated && (
         <FloatingSidebar
-          onTreasureClick={() => setTreasureOpen(true)}
+          onTreasureClick={() => { setTreasureOpen(true); setShowChestHint(false); }}
           onShareClick={() => setShareOpen(true)}
           collectedCount={Object.keys(collection).length}
           shareTokens={shareTokens}
+          showChestHint={showChestHint}
         />
       )}
 

@@ -17,6 +17,7 @@ const CONFIG = {
     process.env.LINE_CHANNEL_SECRET || 'YOUR_LINE_CHANNEL_SECRET',
 };
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin-secret-token';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // 中間件
 app.use(cors());
@@ -28,6 +29,7 @@ const DB = {
   users: new Map(),
   qrCodes: new Map(),
   gachaHistory: [],
+  orders: [],          // 點單紀錄
 };
 
 // 咖啡卡片權重配置
@@ -410,7 +412,7 @@ app.post('/api/admin/qrcode/generate', authenticateAdmin, (req, res) => {
 
     qrCodes.push({
       code,
-      url: `${req.protocol}://${req.get('host')}/?qr=${code}`,
+      url: `${FRONTEND_URL}/?qr=${code}`,
     });
   }
 
@@ -457,6 +459,7 @@ app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
     usedQRCodes: Array.from(DB.qrCodes.values()).filter(
       (q) => q.type === 'gacha' && q.used,
     ).length,
+    totalOrders: DB.orders.length,
     cardDistribution: {},
   };
 
@@ -471,6 +474,54 @@ app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
     success: true,
     stats,
   });
+});
+
+// 9. 商家 LINE 登入（識別員工身份，不建立遊戲帳號）
+app.post('/api/admin/line-login', async (req, res) => {
+  try {
+    const { code, redirectUri } = req.body;
+    const tokenRes = await axios.post(
+      'https://api.line.me/oauth2/v2.1/token',
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: CONFIG.LINE_CHANNEL_ID,
+        client_secret: CONFIG.LINE_CHANNEL_SECRET,
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+    );
+    const profileRes = await axios.get('https://api.line.me/v2/profile', {
+      headers: { Authorization: `Bearer ${tokenRes.data.access_token}` },
+    });
+    const { userId, displayName, pictureUrl } = profileRes.data;
+    res.json({ success: true, staff: { lineId: userId, name: displayName, picture: pictureUrl } });
+  } catch (err) {
+    console.error('Merchant LINE login error:', err.message);
+    res.status(500).json({ success: false, message: 'LINE 登入失敗' });
+  }
+});
+
+// 10. 記錄點單
+app.post('/api/admin/order', authenticateAdmin, (req, res) => {
+  const { staffLineId, staffName, items, totalAmount, qrCodes } = req.body;
+  const order = {
+    id: crypto.randomBytes(6).toString('hex').toUpperCase(),
+    staffLineId: staffLineId || null,
+    staffName: staffName || '未知員工',
+    items,        // [{ name, qty, price }]
+    totalAmount,
+    qrCodes,      // [code, ...]
+    createdAt: new Date(),
+  };
+  DB.orders.push(order);
+  res.json({ success: true, order });
+});
+
+// 11. 查詢點單紀錄
+app.get('/api/admin/orders', authenticateAdmin, (req, res) => {
+  const orders = [...DB.orders].reverse();
+  res.json({ success: true, orders, total: orders.length });
 });
 
 // 健康檢查

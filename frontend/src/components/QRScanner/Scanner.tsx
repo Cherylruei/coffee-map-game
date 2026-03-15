@@ -170,7 +170,7 @@ export function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
                     }}>
                         ⌨️ 手動輸入 QR Code 代碼
                     </p>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <input
                             type="text"
                             value={manualCode}
@@ -178,13 +178,14 @@ export function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
                             onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
                             placeholder="請輸入代碼..."
                             style={{
-                                flex: 1,
+                                width: '100%',
                                 padding: '12px 16px',
                                 borderRadius: '8px',
                                 border: '2px solid #ddd',
                                 fontSize: '16px',
                                 outline: 'none',
                                 transition: 'border-color 0.2s',
+                                boxSizing: 'border-box',
                             }}
                             onFocus={(e) => e.target.style.borderColor = '#667eea'}
                             onBlur={(e) => e.target.style.borderColor = '#ddd'}
@@ -194,7 +195,8 @@ export function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
                             onClick={handleManualSubmit}
                             disabled={!manualCode.trim()}
                             style={{
-                                padding: '12px 20px',
+                                width: '100%',
+                                padding: '12px',
                                 background: manualCode.trim() ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#ccc',
                                 color: 'white',
                                 border: 'none',
@@ -202,7 +204,6 @@ export function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
                                 fontSize: '16px',
                                 fontWeight: 'bold',
                                 cursor: manualCode.trim() ? 'pointer' : 'not-allowed',
-                                whiteSpace: 'nowrap',
                             }}
                         >
                             送出

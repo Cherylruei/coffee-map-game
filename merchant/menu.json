@@ -1,0 +1,30 @@
+{
+  "updatedAt": "2026-03",
+  "note": "修改品項只需編輯此檔案，available: false 可暫時下架",
+  "categories": [
+    {
+      "id": "americano",
+      "name": "美式",
+      "items": [
+        { "id": "ice_americano",          "name": "冰美式",       "price": 35, "available": true },
+        { "id": "hot_americano",          "name": "熱美式",       "price": 35, "available": true },
+        { "id": "bubble_americano",       "name": "泡泡美式",     "price": 40, "available": true },
+        { "id": "honey_bubble_americano", "name": "蜂蜜泡泡美式", "price": 45, "available": true }
+      ]
+    },
+    {
+      "id": "latte",
+      "name": "拿鐵",
+      "items": [
+        { "id": "ice_latte",              "name": "冰拿鐵",       "price": 45, "available": true },
+        { "id": "hot_latte",              "name": "熱拿鐵",       "price": 45, "available": true },
+        { "id": "ice_brown_sugar_latte",  "name": "冰黑糖拿鐵",   "price": 50, "available": true },
+        { "id": "hot_brown_sugar_latte",  "name": "熱黑糖拿鐵",   "price": 50, "available": true },
+        { "id": "ice_hazelnut_latte",     "name": "冰榛果拿鐵",   "price": 50, "available": true },
+        { "id": "hot_hazelnut_latte",     "name": "熱榛果拿鐵",   "price": 50, "available": true },
+        { "id": "ice_honey_latte",        "name": "冰蜂蜜拿鐵",   "price": 55, "available": true },
+        { "id": "hot_honey_latte",        "name": "熱蜂蜜拿鐵",   "price": 55, "available": true }
+      ]
+    }
+  ]
+}

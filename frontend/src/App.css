@@ -11,58 +11,73 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
+/* ── App Root ─────────────────────────────── */
 .app {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 20px 16px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
 }
 
+/* ── Main Content ─────────────────────────── */
 .main-content {
   width: 100%;
-  max-width: 600px;
+  max-width: 480px;
+}
+
+/* ── Login / Game Screen ──────────────────── */
+.login-screen {
+  display: flex;
+  flex-direction:column;
+  align-items: center
 }
 
 .login-screen,
 .game-screen {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 24px;
-  padding: 60px 40px;
+  padding: 48px 28px;
   text-align: center;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 100%;
 }
 
 .login-screen h1,
 .game-screen h1 {
-  font-size: 36px;
+  font-size: clamp(24px, 7vw, 36px);
   color: #333;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .login-screen p,
 .game-screen p {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   color: #666;
-  margin-bottom: 40px;
+  margin-bottom: 36px;
+  line-height: 1.5;
 }
 
+/* ── Buttons ──────────────────────────────── */
 .scan-button,
 .cancel-button {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 12px;
-  padding: 16px 48px;
-  font-size: 18px;
+  padding: 14px 40px;
+  font-size: clamp(16px, 4vw, 18px);
   font-weight: bold;
   cursor: pointer;
   box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
   transition: all 0.3s ease;
+  width: 100%;
+  max-width: 280px;
 }
 
 .scan-button:hover,
@@ -78,20 +93,26 @@ body {
 
 .cancel-button {
   background: #999;
-  margin-top: 20px;
+  margin-top: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+/* ── Scanner ──────────────────────────────── */
 .scanner-container {
   margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-/* QR Scanner 自訂樣式 */
 #qr-reader {
   border-radius: 16px;
   overflow: hidden;
+  width: 100% !important;
+  max-width: 320px;
 }
 
 #qr-reader video {
   border-radius: 16px;
+  width: 100% !important;
 }

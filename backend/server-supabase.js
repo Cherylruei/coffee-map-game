@@ -30,6 +30,7 @@ const CONFIG = {
 
 // ADMIN_TOKEN 移到最上面，所有路由都能用到
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin-secret-token';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // 中間件
 app.use(cors({ origin: '*', credentials: true }));
@@ -458,7 +459,7 @@ app.post('/api/admin/qrcode/generate', authenticateAdmin, async (req, res) => {
         .insert({ code, expires_at: expiresAt.toISOString() });
       qrCodes.push({
         code,
-        url: `${req.protocol}://${req.get('host')}/?qr=${code}`,
+        url: `${FRONTEND_URL}/?qr=${code}`,
       });
     }
 
@@ -518,6 +519,10 @@ app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
         cardDist?.filter((h) => h.card_id === i).length || 0;
     }
 
+    const { count: totalOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true });
+
     res.json({
       success: true,
       stats: {
@@ -525,12 +530,77 @@ app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
         totalGachas: totalGachas || 0,
         totalQRCodes: totalQRCodes || 0,
         usedQRCodes: usedQRCodes || 0,
+        totalOrders: totalOrders || 0,
         cardDistribution,
       },
     });
   } catch (error) {
     console.error('Stats error:', error);
     res.status(500).json({ success: false, message: '統計失敗' });
+  }
+});
+
+// 9. 商家 LINE 登入（識別員工身份，不建立遊戲帳號）
+app.post('/api/admin/line-login', async (req, res) => {
+  try {
+    const { code, redirectUri } = req.body;
+    const tokenRes = await axios.post(
+      'https://api.line.me/oauth2/v2.1/token',
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: CONFIG.LINE_CHANNEL_ID,
+        client_secret: CONFIG.LINE_CHANNEL_SECRET,
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+    );
+    const profileRes = await axios.get('https://api.line.me/v2/profile', {
+      headers: { Authorization: `Bearer ${tokenRes.data.access_token}` },
+    });
+    const { userId, displayName, pictureUrl } = profileRes.data;
+    res.json({ success: true, staff: { lineId: userId, name: displayName, picture: pictureUrl } });
+  } catch (err) {
+    console.error('Merchant LINE login error:', err.message);
+    res.status(500).json({ success: false, message: 'LINE 登入失敗' });
+  }
+});
+
+// 10. 記錄點單
+app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
+  try {
+    const { staffLineId, staffName, items, totalAmount, qrCodes } = req.body;
+    const { data, error } = await supabase
+      .from('orders')
+      .insert({
+        staff_line_id: staffLineId || null,
+        staff_name: staffName || '未知員工',
+        items,
+        total_amount: totalAmount,
+        qr_codes: qrCodes,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ success: true, order: data });
+  } catch (error) {
+    console.error('Order create error:', error);
+    res.status(500).json({ success: false, message: '記錄點單失敗' });
+  }
+});
+
+// 11. 查詢點單紀錄
+app.get('/api/admin/orders', authenticateAdmin, async (req, res) => {
+  try {
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ success: true, orders, total: orders?.length || 0 });
+  } catch (error) {
+    console.error('Orders list error:', error);
+    res.status(500).json({ success: false, message: '查詢失敗' });
   }
 });
 

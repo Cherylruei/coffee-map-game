@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_BASE_URL = import.meta.env.VITE_API_URL ||
+  (isLocal ? 'http://localhost:3001/api' : `${window.location.protocol}//${window.location.hostname}:3001/api`);
 
 // 建立 axios 實例
 export const api = axios.create({

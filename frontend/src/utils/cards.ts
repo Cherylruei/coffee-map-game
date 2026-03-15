@@ -17,7 +17,7 @@ export const CARDS: Record<number, Card> = {
     origin: '巴拿馬',
     description: '世界上最昂貴的咖啡品種之一，具有獨特的花香和柑橘風味。',
     weight: 2.5,
-    image: '/cards/geisha.jpg'
+    image: '/item-1.jpg'
   },
   2: {
     id: 2,
@@ -26,7 +26,7 @@ export const CARDS: Record<number, Card> = {
     origin: '牙買加',
     description: '生長於海拔2000米以上，口感醇厚，酸度適中。',
     weight: 2.5,
-    image: '/cards/blue-mountain.jpg'
+    image: '/item-2.jpg'
   },
   3: {
     id: 3,
@@ -35,7 +35,7 @@ export const CARDS: Record<number, Card> = {
     origin: '衣索比亞',
     description: '帶有明亮的檸檬酸和花香，被譽為咖啡界的花旦。',
     weight: 5,
-    image: '/cards/yirgacheffe.jpg'
+    image: '/item-3.jpg'
   },
   4: {
     id: 4,
@@ -44,7 +44,7 @@ export const CARDS: Record<number, Card> = {
     origin: '夏威夷',
     description: '火山土壤賦予獨特風味，口感順滑，略帶堅果香。',
     weight: 5,
-    image: '/cards/kona.jpg'
+    image: '/item-4.jpg'
   },
   5: {
     id: 5,
@@ -53,7 +53,7 @@ export const CARDS: Record<number, Card> = {
     origin: '肯亞',
     description: '酸度明亮，帶有莓果和黑醋栗風味，層次豐富。',
     weight: 5,
-    image: '/cards/kenya-aa.jpg'
+    image: '/item-5.jpg'
   },
   6: {
     id: 6,
@@ -62,7 +62,7 @@ export const CARDS: Record<number, Card> = {
     origin: '哥倫比亞',
     description: '平衡的酸度和甜度，帶有焦糖和巧克力風味。',
     weight: 10,
-    image: '/cards/colombia.jpg'
+    image: '/item-6.jpg'
   },
   7: {
     id: 7,
@@ -71,7 +71,7 @@ export const CARDS: Record<number, Card> = {
     origin: '瓜地馬拉',
     description: '火山土壤培育，帶有煙燻味和巧克力香氣。',
     weight: 10,
-    image: '/cards/guatemala.jpg'
+    image: '/item-7.jpg'
   },
   8: {
     id: 8,
@@ -80,7 +80,7 @@ export const CARDS: Record<number, Card> = {
     origin: '印尼',
     description: '醇厚濃郁，帶有草本和泥土芳香，口感厚實。',
     weight: 10,
-    image: '/cards/mandheling.jpg'
+    image: '/item-8.jpg'
   },
   9: {
     id: 9,
@@ -89,7 +89,7 @@ export const CARDS: Record<number, Card> = {
     origin: '哥斯大黎加',
     description: '明亮的酸度，帶有蜂蜜和柑橘風味，乾淨清爽。',
     weight: 10,
-    image: '/cards/costa-rica.jpg'
+    image: '/item-9.jpg'
   },
   10: {
     id: 10,
@@ -98,7 +98,7 @@ export const CARDS: Record<number, Card> = {
     origin: '巴西',
     description: '世界最大咖啡產國，口感溫和，帶有堅果和巧克力味。',
     weight: 16.7,
-    image: '/cards/brazil.jpg'
+    image: '/item-10.jpg'
   },
   11: {
     id: 11,
@@ -107,7 +107,7 @@ export const CARDS: Record<number, Card> = {
     origin: '越南',
     description: '以羅布斯塔豆為主，口感濃烈，咖啡因含量高。',
     weight: 16.7,
-    image: '/cards/vietnam.jpg'
+    image: '/item-11.jpg'
   },
   12: {
     id: 12,
@@ -116,7 +116,7 @@ export const CARDS: Record<number, Card> = {
     origin: '坦尚尼亞',
     description: '酸度明亮，帶有葡萄柚和黑醋栗風味。',
     weight: 16.6,
-    image: '/cards/tanzania.jpg'
+    image: '/item-12.jpg'
   }
 };
 
