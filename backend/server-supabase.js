@@ -30,11 +30,12 @@ const CONFIG = {
 
 // ADMIN_TOKEN 移到最上面，所有路由都能用到
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin-secret-token';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // 允許的來源：環境變數 ALLOWED_ORIGINS 以逗號分隔，預設包含本地開發
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : ['http://localhost:5173', 'http://localhost:5501'];
+  : ['http://localhost:5173', 'http://localhost:5501', 'http://localhost:5502'];
 
 // 中間件
 app.use(cors({
