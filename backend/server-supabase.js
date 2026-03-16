@@ -34,18 +34,27 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // 允許的來源：環境變數 ALLOWED_ORIGINS 以逗號分隔，預設包含本地開發
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : ['http://localhost:5173', 'http://localhost:5501', 'http://localhost:5502'];
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:5501',
+      'http://localhost:5502',
+      // 'http://192.168.0.173:3000',
+    ];
 
 // 中間件
-app.use(cors({
-  origin: (origin, callback) => {
-    // 允許無 origin（如 curl、Postman、行動 app）或在白名單內的來源
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS blocked: ${origin}`));
-  },
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // 允許無 origin（如 curl、Postman、行動 app）或在白名單內的來源
+      if (!origin || ALLOWED_ORIGINS.includes(origin))
+        return callback(null, true);
+      callback(new Error(`CORS blocked: ${origin}`));
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -571,7 +580,10 @@ app.post('/api/admin/line-login', async (req, res) => {
       headers: { Authorization: `Bearer ${tokenRes.data.access_token}` },
     });
     const { userId, displayName, pictureUrl } = profileRes.data;
-    res.json({ success: true, staff: { lineId: userId, name: displayName, picture: pictureUrl } });
+    res.json({
+      success: true,
+      staff: { lineId: userId, name: displayName, picture: pictureUrl },
+    });
   } catch (err) {
     console.error('Merchant LINE login error:', err.message);
     res.status(500).json({ success: false, message: 'LINE 登入失敗' });

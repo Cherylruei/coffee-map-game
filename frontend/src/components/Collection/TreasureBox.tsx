@@ -123,7 +123,7 @@ function CardPin({
           style={{
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
+            // objectFit: 'cover',
             display: 'block',
           }}
         />
@@ -551,7 +551,6 @@ export function TreasureBox({ isOpen, onClose }: TreasureBoxProps) {
                     inset: 0,
                     width: '100%',
                     height: '100%',
-                    objectFit: 'cover',
                     display: 'block',
                   }}
                 />

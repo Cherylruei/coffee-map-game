@@ -130,18 +130,20 @@ export function LoginPage({ onLogin }: Props) {
                 </div>
               </div>
             )}
-            <input
-              ref={passwordRef}
-              className="login-input"
-              type="password"
-              placeholder="工作人員密碼"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && login()}
-            />
-            <button className="btn full" onClick={login} disabled={loading}>
-              {loading ? '驗證中…' : '進入後台'}
-            </button>
+            <form onSubmit={e => { e.preventDefault(); login(); }}>
+              <input
+                ref={passwordRef}
+                className="login-input"
+                type="password"
+                placeholder="工作人員密碼"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+              <button className="btn full" type="submit" disabled={loading}>
+                {loading ? '驗證中…' : '進入後台'}
+              </button>
+            </form>
             <div className="login-error">{loginError}</div>
             <div style={{ textAlign: 'center', marginTop: 12 }}>
               <a style={{ color: 'var(--muted)', fontSize: '0.78rem', cursor: 'pointer' }} onClick={() => setStep('line')}>
