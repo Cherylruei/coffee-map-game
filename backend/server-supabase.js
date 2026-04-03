@@ -32,7 +32,7 @@ const CONFIG = {
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin-secret-token';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-// 允許的來源：環境變數 ALLOWED_ORIGINS 以逗號分隔，預設包含本地開發
+// 允許的來源：環境變數 ALLOWED_ORIGINS 以逗號分隔，預設包含本地開發與正式環境
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
   : [
@@ -40,7 +40,7 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
       'http://localhost:5173',
       'http://localhost:5501',
       'http://localhost:5502',
-      // 'http://192.168.0.173:3000',
+      FRONTEND_URL, // 正式環境前端（由 FRONTEND_URL env var 控制）
     ];
 
 // 中間件
@@ -591,9 +591,31 @@ app.post('/api/admin/line-login', async (req, res) => {
 });
 
 // 10. 記錄點單
+// 10. 記錄點單
 app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
   try {
-    const { staffLineId, staffName, items, totalAmount, qrCodes } = req.body;
+    const {
+      staffLineId,
+      staffName,
+      items,
+      totalAmount,
+      discount,
+      paymentMethod,
+      employeeId,
+      qrCodes,
+    } = req.body;
+
+    console.log('📝 接收訂單:', {
+      staffName,
+      itemsCount: items?.length,
+      totalAmount,
+      qrCodesCount: qrCodes?.length,
+    });
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: '訂單項目不能為空' });
+    }
+
     const { data, error } = await supabase
       .from('orders')
       .insert({
@@ -601,15 +623,25 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
         staff_name: staffName || '未知員工',
         items,
         total_amount: totalAmount,
-        qr_codes: qrCodes,
+        discount: discount || 0,
+        payment_method: paymentMethod || 'cash',
+        employee_id: employeeId || null,
+        qr_codes: qrCodes || [],
       })
       .select()
       .single();
-    if (error) throw error;
+
+    if (error) {
+      console.error('❌ Supabase 插入錯誤:', error);
+      throw error;
+    }
+
+    console.log('✅ 訂單已保存到 Supabase:', data?.id);
     res.json({ success: true, order: data });
   } catch (error) {
-    console.error('Order create error:', error);
-    res.status(500).json({ success: false, message: '記錄點單失敗' });
+    console.error('訂單記錄錯誤:', error);
+    const message = (error && error.message) ? error.message : '記錄點單失敗';
+    res.status(500).json({ success: false, message });
   }
 });
 
@@ -625,6 +657,256 @@ app.get('/api/admin/orders', authenticateAdmin, async (req, res) => {
   } catch (error) {
     console.error('Orders list error:', error);
     res.status(500).json({ success: false, message: '查詢失敗' });
+  }
+});
+
+// 12. 修改訂單
+app.put('/api/admin/order/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { items, totalAmount, discount, paymentMethod, employeeId } =
+      req.body;
+    const { error } = await supabase
+      .from('orders')
+      .update({
+        items,
+        total_amount: totalAmount,
+        discount: discount ?? 0,
+        payment_method: paymentMethod || 'cash',
+        employee_id: employeeId || null,
+      })
+      .eq('id', id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Order update error:', error);
+    res.status(500).json({ success: false, message: '修改失敗' });
+  }
+});
+
+// 13. 刪除訂單
+app.delete('/api/admin/order/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase.from('orders').delete().eq('id', id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Order delete error:', error);
+    res.status(500).json({ success: false, message: '刪除失敗' });
+  }
+});
+
+// 14. 今日詳細統計（盤點頁用）
+app.get('/api/admin/stats/today', authenticateAdmin, async (req, res) => {
+  try {
+    // 獲取本地時區的今日日期字符串 (YYYY-MM-DD)
+    const today = new Date().toISOString().split('T')[0];
+    const todayStart = `${today}T00:00:00`;
+    const todayEnd = `${today}T23:59:59`;
+
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .gte('created_at', todayStart)
+      .lte('created_at', todayEnd);
+    if (error) throw error;
+
+    let totalCups = 0,
+      totalRevenue = 0;
+    let cashCount = 0,
+      cashAmount = 0,
+      linePayCount = 0,
+      linePayAmount = 0;
+    const staffMap = {};
+    const itemMap = {};
+
+    for (const order of orders || []) {
+      const cups = (order.items || []).reduce((s, i) => s + (i.qty || 0), 0);
+      totalCups += cups;
+      totalRevenue += order.total_amount || 0;
+
+      if (order.payment_method === 'line_pay') {
+        linePayCount++;
+        linePayAmount += order.total_amount || 0;
+      } else {
+        cashCount++;
+        cashAmount += order.total_amount || 0;
+      }
+
+      const sn = order.staff_name || '未知';
+      if (!staffMap[sn]) staffMap[sn] = { count: 0, amount: 0 };
+      staffMap[sn].count++;
+      staffMap[sn].amount += order.total_amount || 0;
+
+      for (const item of order.items || []) {
+        itemMap[item.name] = (itemMap[item.name] || 0) + (item.qty || 0);
+      }
+    }
+
+    const topItems = Object.entries(itemMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+
+    const staffBreakdown = Object.entries(staffMap)
+      .sort(([, a], [, b]) => b.amount - a.amount)
+      .map(([name, d]) => ({ name, count: d.count, amount: d.amount }));
+
+    res.json({
+      success: true,
+      date: todayStart.toISOString().split('T')[0],
+      totalOrders: (orders || []).length,
+      totalCups,
+      totalRevenue,
+      cash: { count: cashCount, amount: cashAmount },
+      linePay: { count: linePayCount, amount: linePayAmount },
+      staffBreakdown,
+      topItems,
+    });
+  } catch (error) {
+    console.error('Today stats error:', error);
+    res.status(500).json({ success: false, message: '統計失敗' });
+  }
+});
+
+// 15. 取得最近一筆盤點（用於計算今日用量）
+app.get('/api/inventory/last', authenticateAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('inventory')
+      .select('*')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    res.json({ success: true, inventory: data });
+  } catch (error) {
+    console.error('Inventory last error:', error);
+    res.status(500).json({ success: false, message: '查詢失敗' });
+  }
+});
+
+// 16. 提交每日盤點
+app.post('/api/inventory/daily', authenticateAdmin, async (req, res) => {
+  try {
+    const {
+      coffeeBeansBags,
+      coffeeBeansGrams,
+      milkBottles,
+      milkMl,
+      completedBy,
+    } = req.body;
+    const today = new Date().toISOString().split('T')[0];
+
+    const { error } = await supabase.from('inventory').upsert(
+      {
+        date: today,
+        coffee_beans_bags: coffeeBeansBags,
+        coffee_beans_grams: coffeeBeansGrams,
+        milk_bottles: milkBottles,
+        milk_ml: milkMl,
+        completed_by: completedBy || null,
+      },
+      { onConflict: 'date' },
+    );
+    if (error) throw error;
+    res.json({
+      success: true,
+      inventory: {
+        date: today,
+        coffee_beans_bags: coffeeBeansBags,
+        coffee_beans_grams: coffeeBeansGrams,
+        milk_bottles: milkBottles,
+        milk_ml: milkMl,
+      },
+    });
+  } catch (error) {
+    console.error('Inventory submit error:', error);
+    res.status(500).json({ success: false, message: '盤點提交失敗' });
+  }
+});
+
+// 17. 取得菜單（公開，無需驗證）
+app.get('/api/menu', async (req, res) => {
+  try {
+    // 先嘗試從 Supabase settings 讀取（包含 available 狀態）
+    const { data: setting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'menu')
+      .single();
+    if (setting?.value?.categories) {
+      return res.json({ success: true, categories: setting.value.categories });
+    }
+  } catch (_) {
+    /* settings 表不存在時直接 fallback */
+  }
+
+  try {
+    const menu = require('./menu.json');
+    res.json({ success: true, ...menu });
+  } catch (error) {
+    console.error('Get menu error:', error);
+    res.status(500).json({ success: false, message: '取得菜單失敗' });
+  }
+});
+
+// 18. 儲存菜單（需要管理員驗證）
+app.put('/api/menu', authenticateAdmin, async (req, res) => {
+  try {
+    const { categories } = req.body;
+    if (!Array.isArray(categories)) {
+      return res.status(400).json({ success: false, message: '格式錯誤' });
+    }
+
+    // 優先嘗試存到 Supabase settings 表
+    try {
+      const { error } = await supabase.from('settings').upsert(
+        {
+          key: 'menu',
+          value: { categories },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'key' },
+      );
+      if (error) throw error;
+    } catch (supabaseErr) {
+      console.warn(
+        'Supabase settings save failed, fallback to file:',
+        supabaseErr.message,
+      );
+      // Fallback: 儲存到 menu.json
+      const fs = require('fs');
+      const path = require('path');
+      const menuPath = path.join(__dirname, 'menu.json');
+
+      let existingMenu = {
+        updatedAt: new Date().toISOString().slice(0, 7),
+        note: '修改品項只需編輯此檔案，available: false 可暫時下架',
+      };
+      try {
+        const existing = require('./menu.json');
+        if (existing.note) existingMenu.note = existing.note;
+      } catch {
+        /* 無既有菜單 */
+      }
+
+      const newMenu = {
+        ...existingMenu,
+        updatedAt: new Date().toISOString().slice(0, 7),
+        categories,
+      };
+
+      fs.writeFileSync(menuPath, JSON.stringify(newMenu, null, 2), 'utf8');
+      // 清除 require 快取
+      delete require.cache[require.resolve('./menu.json')];
+    }
+
+    res.json({ success: true, categories });
+  } catch (error) {
+    console.error('Save menu error:', error);
+    res.status(500).json({ success: false, message: '儲存菜單失敗' });
   }
 });
 

@@ -35,14 +35,23 @@ export interface OrderItem {
   name: string;
   qty: number;
   price: number;
+  doubleShot?: boolean;
 }
 
+export type PaymentMethod = 'cash' | 'line_pay';
+
 export interface Order {
+  id?: string;
   staffName?: string;
   staff_name?: string;
   items?: OrderItem[];
   totalAmount?: number;
   total_amount?: number;
+  discount?: number;
+  paymentMethod?: PaymentMethod;
+  payment_method?: PaymentMethod;
+  employeeId?: string;
+  employee_id?: string;
   qrCodes?: string[];
   qr_codes?: string[];
   createdAt?: string;
@@ -54,6 +63,9 @@ export interface PendingOrder {
   staffName: string;
   items: OrderItem[];
   totalAmount: number;
+  discount: number;
+  paymentMethod: PaymentMethod;
+  employeeId: string;
   qrCodes: string[];
 }
 
@@ -63,4 +75,24 @@ export interface Stats {
   totalQRCodes: number;
   usedQRCodes: number;
   totalOrders?: number;
+}
+
+export interface TodayStats {
+  date: string;
+  totalOrders: number;
+  totalCups: number;
+  totalRevenue: number;
+  cash: { count: number; amount: number };
+  linePay: { count: number; amount: number };
+  staffBreakdown: { name: string; count: number; amount: number }[];
+  topItems: { name: string; count: number }[];
+}
+
+export interface InventoryRecord {
+  date: string;
+  coffee_beans_bags: number;
+  coffee_beans_grams: number;
+  milk_bottles: number;
+  milk_ml: number;
+  completed_by?: string | null;
 }

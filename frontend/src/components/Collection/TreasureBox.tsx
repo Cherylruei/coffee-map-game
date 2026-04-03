@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CARDS, RARITY_COLORS } from '../../utils/cards';
 import { useCollectionStore } from '../../hooks/useCollection';
@@ -6,6 +6,7 @@ import { useCollectionStore } from '../../hooks/useCollection';
 interface TreasureBoxProps {
   isOpen: boolean;
   onClose: () => void;
+  lastCardId?: number | null;
 }
 
 // Equirectangular projection: x=(lon+180)/360*100, y=(80-lat)/160*100
@@ -192,12 +193,39 @@ function CardPin({
   );
 }
 
-export function TreasureBox({ isOpen, onClose }: TreasureBoxProps) {
+export function TreasureBox({ isOpen, onClose, lastCardId }: TreasureBoxProps) {
   const { collection } = useCollectionStore();
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   // ── Pinch-zoom state ──
   const [transform, setTransform] = useState({ scale: 1, tx: 0, ty: 0 });
+
+  // 開啟時設定初始縮放
+  useEffect(() => {
+    if (!isOpen) {
+      setTransform({ scale: 1, tx: 0, ty: 0 });
+      return;
+    }
+    const vpW = window.innerWidth;
+    const headerH = 72;   // header 實際高度
+    const bottomPad = 50; // 距底部 sidebar 的安全距離
+    const vpH = window.innerHeight - headerH - bottomPad;
+
+    if (lastCardId && MAP_PINS[lastCardId]) {
+      // 對焦到剛收集的卡片
+      const pin = MAP_PINS[lastCardId];
+      const scale = 2.5;
+      const pinPx = (pin.x / 100) * vpW * scale;
+      const pinPy = (pin.y / 100) * vpW * (MAP_RATIO / 100) * scale;
+      setTransform(clampTransform(scale, vpW / 2 - pinPx, vpH / 2 - pinPy, vpW, vpH));
+    } else {
+      // 預設：縮放至地圖填滿視窗高度（4/5 以上）
+      const mapHeightAt1 = vpW * (MAP_RATIO / 100);
+      const fitScale = clamp(vpH / mapHeightAt1, MIN_SCALE, MAX_SCALE);
+      const mapW = vpW * fitScale;
+      setTransform(clampTransform(fitScale, Math.min(0, (vpW - mapW) / 2), 0, vpW, vpH));
+    }
+  }, [isOpen, lastCardId]);
   const viewportRef = useRef<HTMLDivElement>(null);
 
   // Gesture tracking refs (never cause re-renders)

@@ -2,7 +2,9 @@ import axios from 'axios';
 
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const API_BASE_URL = import.meta.env.VITE_API_URL ||
-  (isLocal ? 'http://localhost:3001/api' : `${window.location.protocol}//${window.location.hostname}:3001/api`);
+  (isLocal
+    ? 'http://localhost:3001/api'
+    : 'https://coffee-map-game-backend.vercel.app/api');
 
 // 建立 axios 實例
 export const api = axios.create({
@@ -25,8 +27,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
-            // Token 過期或無效
+        const status = error.response?.status;
+        if (status === 401 || status === 403) {
+            // Token 不存在、過期或無效 → 清除並重新登入
             localStorage.removeItem('auth_token');
             localStorage.removeItem('user');
             window.location.href = '/';

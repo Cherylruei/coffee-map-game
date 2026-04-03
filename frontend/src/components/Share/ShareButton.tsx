@@ -22,9 +22,9 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
     try {
       const response = await shareAPI.create(cardId);
       setShareUrl(response.data.shareUrl);
-    } catch (error) {
+    } catch (error: any) {
       console.error('分享失敗:', error);
-      alert('分享失敗，請稍後再試');
+      alert(error.response?.data?.message || '分享失敗，請稍後再試');
     } finally {
       setLoading(false);
     }

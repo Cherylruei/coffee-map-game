@@ -56,6 +56,32 @@ CREATE TABLE IF NOT EXISTS shares (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 6. 建立 orders 表（點單紀錄）
+CREATE TABLE IF NOT EXISTS orders (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  staff_line_id VARCHAR(100),
+  staff_name VARCHAR(100) NOT NULL,
+  items JSONB NOT NULL,                          -- [{ name, qty, price, doubleShot }]
+  total_amount INTEGER NOT NULL,
+  discount INTEGER NOT NULL DEFAULT 0,
+  payment_method VARCHAR(20) NOT NULL DEFAULT 'cash',  -- 'cash' | 'line_pay'
+  employee_id VARCHAR(50),                       -- 顧客員編（選填）
+  qr_codes TEXT[] NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 7. 建立 inventory 表（每日盤點）
+CREATE TABLE IF NOT EXISTS inventory (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  date DATE NOT NULL UNIQUE,
+  coffee_beans_bags INTEGER NOT NULL,
+  coffee_beans_grams INTEGER NOT NULL,
+  milk_bottles INTEGER NOT NULL,
+  milk_ml INTEGER NOT NULL,
+  completed_by TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- 建立索引以提升查詢效能
 CREATE INDEX IF NOT EXISTS idx_users_line_user_id ON users(line_user_id);
 CREATE INDEX IF NOT EXISTS idx_collection_user_id ON collection(user_id);
@@ -84,6 +110,7 @@ ALTER TABLE collection ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gacha_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE qr_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shares ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 
 -- 使用者只能讀取自己的資料
 CREATE POLICY "Users can read own data" ON users

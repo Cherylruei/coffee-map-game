@@ -146,7 +146,7 @@ export function GachaAnimation({ cardId, isNew, onComplete }: GachaAnimationProp
           {/* Card image — 圖片為主視覺，佔大部分空間 */}
           <div style={{
             margin: '12px 14px',
-            height: 'min(220px, 52vw)',
+            height: 'clamp(220px, 46vh, 380px)',
             borderRadius: '16px',
             overflow: 'hidden',
             position: 'relative',

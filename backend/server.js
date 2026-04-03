@@ -29,7 +29,8 @@ const DB = {
   users: new Map(),
   qrCodes: new Map(),
   gachaHistory: [],
-  orders: [],          // 點單紀錄
+  orders: [], // 點單紀錄
+  inventory: [], // 每日盤點
 };
 
 // 咖啡卡片權重配置
@@ -495,7 +496,10 @@ app.post('/api/admin/line-login', async (req, res) => {
       headers: { Authorization: `Bearer ${tokenRes.data.access_token}` },
     });
     const { userId, displayName, pictureUrl } = profileRes.data;
-    res.json({ success: true, staff: { lineId: userId, name: displayName, picture: pictureUrl } });
+    res.json({
+      success: true,
+      staff: { lineId: userId, name: displayName, picture: pictureUrl },
+    });
   } catch (err) {
     console.error('Merchant LINE login error:', err.message);
     res.status(500).json({ success: false, message: 'LINE 登入失敗' });
@@ -504,15 +508,28 @@ app.post('/api/admin/line-login', async (req, res) => {
 
 // 10. 記錄點單
 app.post('/api/admin/order', authenticateAdmin, (req, res) => {
-  const { staffLineId, staffName, items, totalAmount, qrCodes } = req.body;
+  const {
+    staffLineId,
+    staffName,
+    items,
+    totalAmount,
+    discount,
+    paymentMethod,
+    employeeId,
+    qrCodes,
+  } = req.body;
   const order = {
     id: crypto.randomBytes(6).toString('hex').toUpperCase(),
     staffLineId: staffLineId || null,
     staffName: staffName || '未知員工',
-    items,        // [{ name, qty, price }]
+    items, // [{ name, qty, price, doubleShot }]
     totalAmount,
-    qrCodes,      // [code, ...]
-    createdAt: new Date(),
+    discount: discount || 0,
+    paymentMethod: paymentMethod || 'cash',
+    employeeId: employeeId || null,
+    qrCodes, // [code, ...]
+    // 使用 ISO 日期字符串確保時間一致性
+    created_at: new Date().toISOString(),
   };
   DB.orders.push(order);
   res.json({ success: true, order });
@@ -522,6 +539,178 @@ app.post('/api/admin/order', authenticateAdmin, (req, res) => {
 app.get('/api/admin/orders', authenticateAdmin, (req, res) => {
   const orders = [...DB.orders].reverse();
   res.json({ success: true, orders, total: orders.length });
+});
+
+// 12. 修改訂單
+app.put('/api/admin/order/:id', authenticateAdmin, (req, res) => {
+  const { id } = req.params;
+  const idx = DB.orders.findIndex((o) => o.id === id);
+  if (idx === -1)
+    return res.status(404).json({ success: false, message: '訂單不存在' });
+
+  const { items, totalAmount, discount, paymentMethod, employeeId } = req.body;
+  DB.orders[idx] = {
+    ...DB.orders[idx],
+    items,
+    totalAmount,
+    discount: discount ?? 0,
+    paymentMethod: paymentMethod || 'cash',
+    employeeId: employeeId || null,
+    updatedAt: new Date(),
+  };
+  res.json({ success: true, order: DB.orders[idx] });
+});
+
+// 13. 刪除訂單
+app.delete('/api/admin/order/:id', authenticateAdmin, (req, res) => {
+  const { id } = req.params;
+  const idx = DB.orders.findIndex((o) => o.id === id);
+  if (idx === -1)
+    return res.status(404).json({ success: false, message: '訂單不存在' });
+  DB.orders.splice(idx, 1);
+  res.json({ success: true });
+});
+
+// 14. 今日詳細統計（盤點頁用）
+app.get('/api/admin/stats/today', authenticateAdmin, (req, res) => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayOrders = DB.orders.filter(
+    (o) => new Date(o.created_at || o.createdAt) >= todayStart,
+  );
+
+  let totalCups = 0,
+    totalRevenue = 0;
+  let cashCount = 0,
+    cashAmount = 0,
+    linePayCount = 0,
+    linePayAmount = 0;
+  const staffMap = {},
+    itemMap = {};
+
+  for (const order of todayOrders) {
+    const cups = (order.items || []).reduce((s, i) => s + (i.qty || 0), 0);
+    totalCups += cups;
+    totalRevenue += order.totalAmount || order.total_amount || 0;
+    if (order.paymentMethod === 'line_pay' || order.payment_method === 'line_pay') {
+      linePayCount++;
+      linePayAmount += order.totalAmount || order.total_amount || 0;
+    } else {
+      cashCount++;
+      cashAmount += order.totalAmount || order.total_amount || 0;
+    }
+    const sn = order.staffName || '未知';
+    if (!staffMap[sn]) staffMap[sn] = { count: 0, amount: 0 };
+    staffMap[sn].count++;
+    staffMap[sn].amount += order.totalAmount || order.total_amount || 0;
+    for (const item of order.items || []) {
+      itemMap[item.name] = (itemMap[item.name] || 0) + (item.qty || 0);
+    }
+  }
+
+  const topItems = Object.entries(itemMap)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }));
+  const staffBreakdown = Object.entries(staffMap)
+    .sort(([, a], [, b]) => b.amount - a.amount)
+    .map(([name, d]) => ({ name, count: d.count, amount: d.amount }));
+
+  res.json({
+    success: true,
+    date: todayStart.toISOString().split('T')[0],
+    totalOrders: todayOrders.length,
+    totalCups,
+    totalRevenue,
+    cash: { count: cashCount, amount: cashAmount },
+    linePay: { count: linePayCount, amount: linePayAmount },
+    staffBreakdown,
+    topItems,
+  });
+});
+
+// 15. 取得最近一筆盤點
+app.get('/api/inventory/last', authenticateAdmin, (req, res) => {
+  const last = DB.inventory.length
+    ? DB.inventory[DB.inventory.length - 1]
+    : null;
+  res.json({ success: true, inventory: last });
+});
+
+// 16. 提交每日盤點
+app.post('/api/inventory/daily', authenticateAdmin, (req, res) => {
+  const {
+    coffeeBeansBags,
+    coffeeBeansGrams,
+    milkBottles,
+    milkMl,
+    completedBy,
+  } = req.body;
+  const today = new Date().toISOString().split('T')[0];
+  const existing = DB.inventory.findIndex((i) => i.date === today);
+  const record = {
+    date: today,
+    coffee_beans_bags: coffeeBeansBags,
+    coffee_beans_grams: coffeeBeansGrams,
+    milk_bottles: milkBottles,
+    milk_ml: milkMl,
+    completed_by: completedBy || null,
+    created_at: new Date(),
+  };
+  if (existing >= 0) DB.inventory[existing] = record;
+  else DB.inventory.push(record);
+  res.json({ success: true, inventory: record });
+});
+
+// 菜單保存（管理員）
+app.put('/api/menu', authenticateAdmin, (req, res) => {
+  try {
+    const { categories } = req.body;
+    if (!Array.isArray(categories)) {
+      return res.status(400).json({ success: false, message: '菜單格式無效' });
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const menuPath = path.join(__dirname, 'menu.json');
+
+    // 讀取現有菜單保留 updatedAt 和 note
+    let existingMenu = {
+      updatedAt: new Date().toISOString().slice(0, 7),
+      note: '修改品項只需編輯此檔案，available: false 可暫時下架',
+    };
+    try {
+      const existing = require('./menu.json');
+      if (existing.note) existingMenu.note = existing.note;
+    } catch {
+      /* 無既有菜單 */
+    }
+
+    const newMenu = {
+      ...existingMenu,
+      updatedAt: new Date().toISOString().slice(0, 7),
+      categories,
+    };
+
+    fs.writeFileSync(menuPath, JSON.stringify(newMenu, null, 2), 'utf8');
+    // 清除 require 快取，下次讀取時會取得新鮮資料
+    delete require.cache[require.resolve('./menu.json')];
+
+    res.json({ success: true, categories });
+  } catch (error) {
+    console.error('菜單保存失敗:', error);
+    res.status(500).json({ success: false, message: '菜單保存失敗' });
+  }
+});
+
+// 取得菜單（公開，無需驗證）
+app.get('/api/menu', (req, res) => {
+  try {
+    const menu = require('./menu.json');
+    res.json({ success: true, ...menu });
+  } catch (error) {
+    res.status(500).json({ success: false, message: '菜單讀取失敗' });
+  }
 });
 
 // 健康檢查

@@ -4,8 +4,10 @@ import { LoginPage } from './components/LoginPage';
 import { OrderTab } from './components/OrderTab';
 import { GachaTab } from './components/GachaTab';
 import { StatsTab } from './components/StatsTab';
+import { InventoryTab } from './components/InventoryTab';
+import { MenuTab } from './components/MenuTab';
 
-type Tab = 'order' | 'qr' | 'stats';
+type Tab = 'order' | 'qr' | 'stats' | 'inventory' | 'menu';
 
 export default function App() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export default function App() {
   }
 
   function triggerStatsRefresh() {
-    setStatsRefresh(n => n + 1);
+    setStatsRefresh((n) => n + 1);
   }
 
   if (!sessionToken) {
@@ -34,22 +36,24 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className='app-shell'>
       {/* Top Bar */}
-      <div className="top-bar">
+      <div className='top-bar'>
         {staffInfo ? (
-          <div className="staff-badge">
-            {staffInfo.picture && <img src={staffInfo.picture} alt="" />}
+          <div className='staff-badge'>
+            {staffInfo.picture && <img src={staffInfo.picture} alt='' />}
             {staffInfo.name}
           </div>
         ) : (
           <h1>☕ 後台</h1>
         )}
-        <button className="logout-btn" onClick={logout}>登出</button>
+        <button className='logout-btn' onClick={logout}>
+          登出
+        </button>
       </div>
 
       {/* Panels */}
-      <div className="panels">
+      <div className='panels'>
         <div className={`panel${activeTab === 'order' ? ' active' : ''}`}>
           <OrderTab
             sessionToken={sessionToken}
@@ -67,23 +71,58 @@ export default function App() {
         </div>
 
         <div className={`panel${activeTab === 'stats' ? ' active' : ''}`}>
-          <StatsTab
+          <StatsTab sessionToken={sessionToken} refreshSignal={statsRefresh} />
+        </div>
+
+        <div className={`panel${activeTab === 'inventory' ? ' active' : ''}`}>
+          <InventoryTab
             sessionToken={sessionToken}
+            staffName={staffInfo?.name || '未識別員工'}
             refreshSignal={statsRefresh}
           />
+        </div>
+
+        <div className={`panel${activeTab === 'menu' ? ' active' : ''}`}>
+          <MenuTab sessionToken={sessionToken} />
         </div>
       </div>
 
       {/* Tab Nav */}
-      <nav className="tab-nav">
-        <button className={`tab-btn${activeTab === 'order' ? ' active' : ''}`} onClick={() => setActiveTab('order')} aria-label="點單">
+      <nav className='tab-nav'>
+        <button
+          className={`tab-btn${activeTab === 'order' ? ' active' : ''}`}
+          onClick={() => setActiveTab('order')}
+          aria-label='點單'
+        >
           📋
         </button>
-        <button className={`tab-btn${activeTab === 'qr' ? ' active' : ''}`} onClick={() => setActiveTab('qr')} aria-label="抽卡">
+        <button
+          className={`tab-btn${activeTab === 'qr' ? ' active' : ''}`}
+          onClick={() => setActiveTab('qr')}
+          aria-label='抽卡'
+        >
           🎴
         </button>
-        <button className={`tab-btn${activeTab === 'stats' ? ' active' : ''}`} onClick={() => setActiveTab('stats')} aria-label="統計">
+        <button
+          className={`tab-btn${activeTab === 'stats' ? ' active' : ''}`}
+          onClick={() => setActiveTab('stats')}
+          aria-label='統計'
+        >
           📊
+        </button>
+        <button
+          className={`tab-btn${activeTab === 'inventory' ? ' active' : ''}`}
+          onClick={() => setActiveTab('inventory')}
+          aria-label='盤點'
+        >
+          📦
+        </button>
+        <button
+          className={`tab-btn${activeTab === 'menu' ? ' active' : ''}`}
+          onClick={() => setActiveTab('menu')}
+          aria-label='菜單'
+        >
+          🍽️
         </button>
       </nav>
     </div>
