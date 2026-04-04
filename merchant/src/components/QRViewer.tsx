@@ -25,16 +25,11 @@ export function QRViewer({ qrCodes, drinkList, pendingOrder, onCommit, onCancel 
 
   return (
     <div className="qr-viewer">
+      {/* 頂部標題列 */}
       <div className="qr-viewer-bar">
-        <button className="btn outline" style={{ padding: '7px 14px', fontSize: '0.85rem', flexShrink: 0 }} onClick={onCancel}>
-          取消
-        </button>
         <div className="qr-viewer-title">
           QR Code — 共 {qrCodes.length} 張
         </div>
-        <button className="btn" style={{ padding: '7px 14px', fontSize: '0.85rem', flexShrink: 0 }} onClick={onCommit}>
-          完成收款
-        </button>
       </div>
 
       {/* 訂單摘要 */}
@@ -81,6 +76,16 @@ export function QRViewer({ qrCodes, drinkList, pendingOrder, onCommit, onCancel 
             </button>
           </div>
         ))}
+      </div>
+
+      {/* 底部操作列 - 固定在底部 */}
+      <div className="qr-viewer-bottom">
+        <button className="btn outline" style={{ flex: 1, padding: '11px 14px', fontSize: '0.9rem' }} onClick={onCancel}>
+          取消
+        </button>
+        <button className="btn" style={{ flex: 1, padding: '11px 14px', fontSize: '0.9rem' }} onClick={onCommit}>
+          ✅ 完成收款
+        </button>
       </div>
     </div>
   );

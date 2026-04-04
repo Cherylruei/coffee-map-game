@@ -163,6 +163,9 @@ body,
   border-color: var(--muted);
   color: var(--text);
 }
+.btn.saved {
+  background: var(--green);
+}
 
 /* ── Copy button ── */
 .copy-btn {
@@ -560,16 +563,21 @@ body,
   align-items: center;
   gap: 12px;
   margin: 0 -16px -16px;
+  min-height: 56px;
+  overflow: visible;
 }
 .order-bar-info {
   flex: 1;
   font-size: 0.85rem;
   color: var(--muted);
+  min-height: 1.6em;
+  line-height: 1.4;
 }
 .total-amount {
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--text);
+  white-space: nowrap;
 }
 
 /* 訂單摘要（QRViewer 內） */
@@ -619,6 +627,7 @@ body,
   z-index: 200;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .qr-viewer-bar {
   background: var(--card);
@@ -629,12 +638,17 @@ body,
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 10px;
+  min-height: 52px;
+  z-index: 1;
 }
 .qr-viewer-title {
   font-size: 0.95rem;
   font-weight: 600;
   flex: 1;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .qr-viewer-body {
   flex: 1;
@@ -644,6 +658,18 @@ body,
   flex-direction: column;
   align-items: center;
   gap: 20px;
+  -webkit-overflow-scrolling: touch;
+}
+.qr-viewer-bottom {
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 1;
 }
 .viewer-qr-card {
   background: var(--card);
@@ -1076,6 +1102,14 @@ body,
   color: var(--accent);
   margin-top: 6px;
 }
+.inv-stock-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
 
 .suggestion-box {
   background: rgba(200, 134, 10, 0.08);
@@ -1091,6 +1125,92 @@ body,
   margin-bottom: 8px;
 }
 .suggestion-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+/* ── Restock Section ── */
+.restock-section {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.restock-section h2 {
+  font-size: 1rem;
+  margin-bottom: 14px;
+}
+.restock-material {
+  margin-bottom: 16px;
+}
+.restock-material-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.restock-input-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.restock-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.restock-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 1rem;
+  padding: 8px 10px;
+  outline: none;
+  min-width: 0;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+.restock-input:focus {
+  border-color: var(--accent);
+}
+.restock-input::-webkit-outer-spin-button,
+.restock-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+.restock-unit {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.restock-total {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--accent);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.restock-total-box {
+  background: rgba(200, 134, 10, 0.08);
+  border: 1px solid rgba(200, 134, 10, 0.3);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+.restock-total-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.restock-total-row {
   display: flex;
   justify-content: space-between;
   font-size: 0.85rem;
