@@ -50,6 +50,7 @@ export const userAPI = {
 
 export const gachaAPI = {
     pull: (qrCode: string) => api.post('/gacha/pull', { qrCode }),
+    draw: () => api.post('/gacha/draw'),
 };
 
 export const shareAPI = {

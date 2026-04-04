@@ -24,6 +24,7 @@ export interface MenuData {
 export interface QRCodeItem {
   code: string;
   url: string;
+  cupCount?: number;
   used?: boolean;
   usedAt?: string;
   createdAt?: string;
@@ -66,7 +67,8 @@ export interface PendingOrder {
   discount: number;
   paymentMethod: PaymentMethod;
   employeeId: string;
-  qrCodes: string[];
+  qrCode: string;
+  cupCount: number;
 }
 
 export interface Stats {

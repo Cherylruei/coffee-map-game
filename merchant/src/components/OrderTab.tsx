@@ -14,6 +14,7 @@ interface Props {
   staffName: string;
   staffLineId: string | null;
   onOrderCommitted: () => void;
+  onQRViewerChange?: (open: boolean) => void;
 }
 
 export function OrderTab({
@@ -21,6 +22,7 @@ export function OrderTab({
   staffName,
   staffLineId,
   onOrderCommitted,
+  onQRViewerChange,
 }: Props) {
   const [menuData, setMenuData] = useState<MenuData | null>(null);
   const [menuError, setMenuError] = useState(false);
@@ -29,8 +31,7 @@ export function OrderTab({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [employeeId, setEmployeeId] = useState('');
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerQRs, setViewerQRs] = useState<QRCodeItem[]>([]);
-  const [drinkList, setDrinkList] = useState<string[]>([]);
+  const [viewerQR, setViewerQR] = useState<QRCodeItem | null>(null);
   const [pendingOrder, setPendingOrder] = useState<PendingOrder | null>(null);
   const [generating, setGenerating] = useState(false);
 
@@ -94,31 +95,19 @@ export function OrderTab({
         qty: orderItems[item.id],
       }));
 
-    const data = await api<{ success: boolean; qrCodes: QRCodeItem[] }>(
+    const data = await api<{ success: boolean; qrCode: QRCodeItem }>(
       '/api/admin/qrcode/generate',
       sessionToken,
       {
         method: 'POST',
-        body: JSON.stringify({ quantity: qrCups, expiresInDays: 30 }),
+        body: JSON.stringify({ cupCount: qrCups, expiresInDays: 30 }),
       },
     );
     setGenerating(false);
 
     if (!data?.success) return;
 
-    // 只將非客製項加入 drinks 列表
-    const drinks: string[] = [];
-    for (const line of orderLines) {
-      const lineCategory = menuData?.categories?.find((c) =>
-        c.items.some((i) => i.id === line.id),
-      );
-      if (lineCategory?.id !== 'custom') {
-        for (let i = 0; i < line.qty; i++) drinks.push(line.name);
-      }
-    }
-
-    setDrinkList(drinks);
-    setViewerQRs(data.qrCodes);
+    setViewerQR(data.qrCode);
     setPendingOrder({
       staffLineId,
       staffName,
@@ -131,19 +120,33 @@ export function OrderTab({
       discount: discountNum,
       paymentMethod,
       employeeId: employeeId.trim(),
-      qrCodes: data.qrCodes.map((q) => q.code),
+      qrCode: data.qrCode.code,
+      cupCount: qrCups,
     });
     setViewerOpen(true);
+    onQRViewerChange?.(true);
   }
 
   async function commitAndClose() {
     if (!pendingOrder) return;
 
     try {
-      console.log('提交訂單:', pendingOrder);
+      // 轉換為後端需要的格式（qrCodes 陣列）
+      const orderPayload = {
+        staffLineId: pendingOrder.staffLineId,
+        staffName: pendingOrder.staffName,
+        items: pendingOrder.items,
+        totalAmount: pendingOrder.totalAmount,
+        discount: pendingOrder.discount,
+        paymentMethod: pendingOrder.paymentMethod,
+        employeeId: pendingOrder.employeeId,
+        qrCodes: [pendingOrder.qrCode],
+      };
+
+      console.log('提交訂單:', orderPayload);
       const result = await api('/api/admin/order', sessionToken, {
         method: 'POST',
-        body: JSON.stringify(pendingOrder),
+        body: JSON.stringify(orderPayload),
       });
 
       console.log('訂單提交結果:', result);
@@ -170,7 +173,8 @@ export function OrderTab({
 
   function closeViewer() {
     setViewerOpen(false);
-    setViewerQRs([]);
+    onQRViewerChange?.(false);
+    setViewerQR(null);
     setOrderItems({});
     setDiscount('');
     setPaymentMethod('cash');
@@ -325,10 +329,10 @@ export function OrderTab({
         </button>
       </div>
 
-      {viewerOpen && (
+      {viewerOpen && viewerQR && (
         <QRViewer
-          qrCodes={viewerQRs}
-          drinkList={drinkList}
+          qrCode={viewerQR}
+          cupCount={pendingOrder?.cupCount || 1}
           pendingOrder={pendingOrder}
           onCommit={commitAndClose}
           onCancel={cancelViewer}

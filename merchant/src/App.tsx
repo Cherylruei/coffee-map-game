@@ -14,6 +14,7 @@ export default function App() {
   const [staffInfo, setStaffInfo] = useState<StaffInfo | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('order');
   const [statsRefresh, setStatsRefresh] = useState(0);
+  const [qrViewerOpen, setQrViewerOpen] = useState(false);
 
   function handleLogin(token: string, staff: StaffInfo | null) {
     setSessionToken(token);
@@ -60,6 +61,7 @@ export default function App() {
             staffName={staffInfo?.name || '未識別員工'}
             staffLineId={staffInfo?.lineId || null}
             onOrderCommitted={triggerStatsRefresh}
+            onQRViewerChange={setQrViewerOpen}
           />
         </div>
 
@@ -88,6 +90,7 @@ export default function App() {
       </div>
 
       {/* Tab Nav */}
+      {!qrViewerOpen && (
       <nav className='tab-nav'>
         <button
           className={`tab-btn${activeTab === 'order' ? ' active' : ''}`}
@@ -125,6 +128,7 @@ export default function App() {
           🍽️
         </button>
       </nav>
+      )}
     </div>
   );
 }

@@ -18,7 +18,7 @@ let qrCodeProcessing = false;
 
 function App() {
   const { isAuthenticated, setAuth } = useAuthStore();
-  const { collection, shareTokens, setCollection, setShareTokens, setPendingShares } =
+  const { collection, shareTokens, drawChances, setCollection, setShareTokens, setPendingShares, setDrawChances } =
     useCollectionStore();
   const [showScanner, setShowScanner] = useState(false);
   const [gachaResult, setGachaResult] = useState<{
@@ -30,6 +30,8 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showChestHint, setShowChestHint] = useState(false);
   const [lastCardId, setLastCardId] = useState<number | null>(null);
+  const [showNoChancesModal, setShowNoChancesModal] = useState(false);
+  const [drawingInProgress, setDrawingInProgress] = useState(false);
   // 記錄抽卡前的收藏數，判斷是否為第一張
   const collectionCountRef = useRef(0);
 
@@ -40,6 +42,7 @@ function App() {
         setCollection(response.data.collection);
         setPendingShares(response.data.pendingShares || {});
         setShareTokens(response.data.shareTokens);
+        setDrawChances(response.data.drawChances || 0);
       }
     } catch (error) {
       console.error('載入收藏失敗:', error);
@@ -56,7 +59,7 @@ function App() {
         loadCollection();
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 只在元件掛載時執行一次
 
   // 處理 LINE Login 回調 & 分享領取
@@ -103,8 +106,7 @@ function App() {
     }
   }, [isAuthenticated]);
 
-  // QR Code 掃描成功處理
-  // 不在此處關閉 scanner，等動畫結束才返回主頁，讓使用者看到卡片飛入寶箱
+  // QR Code 掃描成功處理 — 兌換為抽卡次數
   const handleQRScan = async (rawQR: string) => {
     // 防止重複掃描
     if (qrCodeProcessing) {
@@ -114,9 +116,6 @@ function App() {
     qrCodeProcessing = true;
 
     try {
-      // 記錄抽卡前的收藏數
-      collectionCountRef.current = Object.keys(collection).length;
-
       // 支援掃到完整 URL（如 https://xxx/?qr=COFFEE-XXXX）或直接是代碼
       let qrCode = rawQR;
       try {
@@ -130,17 +129,50 @@ function App() {
       const response = await gachaAPI.pull(qrCode);
 
       if (response.data.success) {
+        setDrawChances(response.data.drawChances);
+        setShowScanner(false);
+        alert(`🎉 ${response.data.message}`);
+      }
+    } catch (error: any) {
+      console.error('兌換失敗:', error);
+      alert(error.response?.data?.message || '兌換失敗，請稍後再試');
+    } finally {
+      qrCodeProcessing = false;
+    }
+  };
+
+  // 使用抽卡次數抽卡
+  const handleDraw = async () => {
+    if (drawChances <= 0) {
+      setShowNoChancesModal(true);
+      return;
+    }
+    if (drawingInProgress) return;
+    setDrawingInProgress(true);
+
+    try {
+      // 記錄抽卡前的收藏數
+      collectionCountRef.current = Object.keys(collection).length;
+
+      const response = await gachaAPI.draw();
+
+      if (response.data.success) {
         setGachaResult({
           cardId: response.data.card.id,
           isNew: response.data.isNew,
         });
         setCollection(response.data.collection);
+        setDrawChances(response.data.drawChances);
       }
     } catch (error: any) {
       console.error('抽卡失敗:', error);
-      // 只有在錯誤時才重新開啟掃描器
-      qrCodeProcessing = false;
-      alert(error.response?.data?.message || '抽卡失敗，請稍後再試');
+      if (error.response?.data?.drawChances === 0) {
+        setDrawChances(0);
+        setShowNoChancesModal(true);
+      } else {
+        alert(error.response?.data?.message || '抽卡失敗，請稍後再試');
+      }
+      setDrawingInProgress(false);
     }
   };
 
@@ -150,7 +182,7 @@ function App() {
     if (gachaResult) setLastCardId(gachaResult.cardId);
     setGachaResult(null);
     setShowScanner(false); // 返回主掃描頁
-    qrCodeProcessing = false; // 重置掃描鎖
+    setDrawingInProgress(false);
     if (wasFirstCard) {
       setShowChestHint(true);
     }
@@ -185,6 +217,21 @@ function App() {
                 >
                   📱 掃描 QR Code
                 </button>
+
+                {/* 抽卡次數顯示與抽卡按鈕 */}
+                <div className='draw-chances-section'>
+                  <div className='draw-chances-badge'>
+                    🎫 抽卡次數：<span className='draw-count'>{drawChances}</span>
+                  </div>
+                  <button
+                    className={`draw-button${drawChances > 0 ? ' active' : ' disabled'}`}
+                    onClick={handleDraw}
+                    disabled={drawingInProgress}
+                  >
+                    {drawingInProgress ? '抽卡中...' : '🎴 抽卡'}
+                  </button>
+                </div>
+
                 <button
                   className='menu-button'
                   onClick={() => setMenuOpen(true)}
@@ -217,6 +264,20 @@ function App() {
           isNew={gachaResult.isNew}
           onComplete={handleGachaComplete}
         />
+      )}
+
+      {/* 抽卡次數不足彈窗 */}
+      {showNoChancesModal && (
+        <div className='modal-overlay' onClick={() => setShowNoChancesModal(false)}>
+          <div className='modal-content no-chances-modal' onClick={(e) => e.stopPropagation()}>
+            <div className='modal-emoji'>☕</div>
+            <h2>抽卡次數不足</h2>
+            <p>去咖啡社買杯咖啡，增加你的抽獎次數哦！</p>
+            <button className='modal-close-btn' onClick={() => setShowNoChancesModal(false)}>
+              我知道了
+            </button>
+          </div>
+        </div>
       )}
 
       {/* 側邊欄 — z-index 10001，在抽卡動畫 collecting 時可見（收卡飛向寶箱） */}

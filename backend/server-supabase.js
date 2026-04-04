@@ -221,7 +221,7 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('share_tokens')
+      .select('share_tokens, draw_chances')
       .eq('id', req.user.userId)
       .single();
 
@@ -255,6 +255,7 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
       collection,
       pendingShares: pendingSharesByCard, // { cardId: count, ... }
       shareTokens: user?.share_tokens || 3,
+      drawChances: user?.draw_chances || 0,
     });
   } catch (error) {
     console.error('Get collection error:', error);
@@ -262,7 +263,7 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
   }
 });
 
-// 3. 抽卡 API
+// 3. 兌換 QR Code → 累加抽卡次數（不直接抽卡）
 app.post('/api/gacha/pull', authenticateToken, async (req, res) => {
   try {
     const { qrCode } = req.body;
@@ -284,6 +285,70 @@ app.post('/api/gacha/pull', authenticateToken, async (req, res) => {
         .status(400)
         .json({ success: false, message: 'QR Code 已過期' });
 
+    const cupCount = qrData.cup_count || 1;
+
+    // 累加用戶的抽卡次數
+    const { data: user } = await supabase
+      .from('users')
+      .select('draw_chances')
+      .eq('id', req.user.userId)
+      .single();
+
+    const newDrawChances = (user?.draw_chances || 0) + cupCount;
+
+    await supabase
+      .from('users')
+      .update({ draw_chances: newDrawChances })
+      .eq('id', req.user.userId);
+
+    // 標記 QR Code 為已使用
+    await supabase
+      .from('qr_codes')
+      .update({
+        used: true,
+        used_by: req.user.userId,
+        used_at: new Date().toISOString(),
+      })
+      .eq('code', qrCode);
+
+    res.json({
+      success: true,
+      message: `已獲得 ${cupCount} 次抽卡機會！`,
+      drawChances: newDrawChances,
+      addedChances: cupCount,
+    });
+  } catch (error) {
+    console.error('QR redeem error:', error);
+    res.status(500).json({ success: false, message: '兌換失敗' });
+  }
+});
+
+// 3.5. 使用抽卡次數抽卡（draw_chances > 0 時可用）
+app.post('/api/gacha/draw', authenticateToken, async (req, res) => {
+  try {
+    // 檢查抽卡次數
+    const { data: user } = await supabase
+      .from('users')
+      .select('draw_chances')
+      .eq('id', req.user.userId)
+      .single();
+
+    if (!user || (user.draw_chances || 0) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: '抽卡次數不足，去咖啡社買杯咖啡增加抽獎次數哦！',
+        drawChances: 0,
+      });
+    }
+
+    // 扣減抽卡次數
+    const newDrawChances = user.draw_chances - 1;
+    await supabase
+      .from('users')
+      .update({ draw_chances: newDrawChances })
+      .eq('id', req.user.userId);
+
+    // 執行抽卡
     const cardId = pullCard();
 
     const { data: existingCard } = await supabase
@@ -307,19 +372,11 @@ app.post('/api/gacha/pull', authenticateToken, async (req, res) => {
         .insert({ user_id: req.user.userId, card_id: cardId, count: 1 });
     }
 
-    await supabase
-      .from('qr_codes')
-      .update({
-        used: true,
-        used_by: req.user.userId,
-        used_at: new Date().toISOString(),
-      })
-      .eq('code', qrCode);
-
+    // 記錄抽卡歷史
     await supabase.from('gacha_history').insert({
       user_id: req.user.userId,
       card_id: cardId,
-      qr_code: qrCode,
+      qr_code: null,
       is_new: isNew,
     });
 
@@ -333,9 +390,15 @@ app.post('/api/gacha/pull', authenticateToken, async (req, res) => {
       collection[item.card_id] = item.count;
     });
 
-    res.json({ success: true, card: { id: cardId }, isNew, collection });
+    res.json({
+      success: true,
+      card: { id: cardId },
+      isNew,
+      collection,
+      drawChances: newDrawChances,
+    });
   } catch (error) {
-    console.error('Gacha pull error:', error);
+    console.error('Gacha draw error:', error);
     res.status(500).json({ success: false, message: '抽卡失敗' });
   }
 });
@@ -578,27 +641,26 @@ app.post('/api/share/cancel', authenticateToken, async (req, res) => {
 
 // ===== 店家後台 API =====
 
-// 6. 生成抽卡 QR Code
+// 6. 生成抽卡 QR Code（1 張 QR Code，含杯數資訊）
 app.post('/api/admin/qrcode/generate', authenticateAdmin, async (req, res) => {
   try {
-    const { quantity = 1, expiresInDays = 30 } = req.body;
+    const { cupCount = 1, expiresInDays = 30 } = req.body;
     const expiresAt = new Date(
       Date.now() + expiresInDays * 24 * 60 * 60 * 1000,
     );
-    const qrCodes = [];
 
-    for (let i = 0; i < quantity; i++) {
-      const code = `COFFEE-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
-      await supabase
-        .from('qr_codes')
-        .insert({ code, expires_at: expiresAt.toISOString() });
-      qrCodes.push({
-        code,
-        url: `${FRONTEND_URL}/?qr=${code}`,
-      });
-    }
+    const code = `COFFEE-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+    await supabase
+      .from('qr_codes')
+      .insert({ code, cup_count: cupCount, expires_at: expiresAt.toISOString() });
 
-    res.json({ success: true, qrCodes });
+    const qrCode = {
+      code,
+      url: `${FRONTEND_URL}/?qr=${code}`,
+      cupCount,
+    };
+
+    res.json({ success: true, qrCode });
   } catch (error) {
     console.error('QR generate error:', error);
     res.status(500).json({ success: false, message: '生成失敗' });

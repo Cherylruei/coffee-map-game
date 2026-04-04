@@ -33,7 +33,7 @@ body {
 /* ── Login / Game Screen ──────────────────── */
 .login-screen {
   display: flex;
-  flex-direction:column;
+  flex-direction: column;
   align-items: center
 }
 
@@ -119,11 +119,15 @@ body {
   transition: all 0.2s ease;
   margin-top: 8px;
 }
+
 .menu-button:hover {
   background: rgba(102, 126, 234, 0.15);
   transform: translateY(-1px);
 }
-.menu-button:active { transform: translateY(0); }
+
+.menu-button:active {
+  transform: translateY(0);
+}
 
 /* ── Scanner ──────────────────────────────── */
 .scanner-container {
@@ -143,4 +147,160 @@ body {
 #qr-reader video {
   border-radius: 16px;
   width: 100% !important;
+}
+
+/* ── Draw Chances Section ────────────────── */
+.draw-chances-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 4px;
+}
+
+.draw-chances-badge {
+  font-size: clamp(15px, 4vw, 17px);
+  font-weight: 600;
+  color: #555;
+  background: linear-gradient(135deg, #fff7e6, #fff3cd);
+  border: 2px solid #ffc107;
+  border-radius: 12px;
+  padding: 8px 20px;
+  width: 100%;
+  text-align: center;
+}
+
+.draw-count {
+  font-size: clamp(18px, 5vw, 22px);
+  font-weight: 800;
+  color: #e67e22;
+}
+
+.draw-button {
+  border: none;
+  border-radius: 12px;
+  padding: 14px 40px;
+  font-size: clamp(16px, 4vw, 18px);
+  font-weight: bold;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.3s ease;
+}
+
+.draw-button.active {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  box-shadow: 0 8px 20px rgba(245, 87, 108, 0.4);
+  animation: pulse-draw 2s infinite;
+}
+
+.draw-button.active:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(245, 87, 108, 0.5);
+}
+
+.draw-button.active:active {
+  transform: translateY(0);
+}
+
+.draw-button.disabled {
+  background: #ddd;
+  color: #999;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+@keyframes pulse-draw {
+
+  0%,
+  100% {
+    box-shadow: 0 8px 20px rgba(245, 87, 108, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 8px 30px rgba(245, 87, 108, 0.6);
+  }
+}
+
+/* ── No Chances Modal ────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 24px;
+  padding: 36px 28px;
+  text-align: center;
+  max-width: 340px;
+  width: 100%;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+.modal-emoji {
+  font-size: 56px;
+  margin-bottom: 16px;
+}
+
+.modal-content h2 {
+  font-size: 20px;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.modal-content p {
+  font-size: 15px;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.modal-close-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 36px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modal-close-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

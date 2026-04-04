@@ -185,10 +185,11 @@ app.get('/api/user/collection', authenticateToken, (req, res) => {
     success: true,
     collection: user.collection,
     shareTokens: user.shareTokens,
+    drawChances: user.drawChances || 0,
   });
 });
 
-// 3. 抽卡 API
+// 3. 兌換 QR Code → 累加抽卡次數（不直接抽卡）
 app.post('/api/gacha/pull', authenticateToken, (req, res) => {
   const { qrCode } = req.body;
   const user = DB.users.get(req.user.userId);
@@ -224,6 +225,49 @@ app.post('/api/gacha/pull', authenticateToken, (req, res) => {
     });
   }
 
+  const cupCount = qrData.cupCount || 1;
+
+  // 累加抽卡次數
+  user.drawChances = (user.drawChances || 0) + cupCount;
+
+  // 標記 QR Code 為已使用
+  qrData.used = true;
+  qrData.usedBy = user.userId;
+  qrData.usedAt = new Date();
+
+  // 儲存用戶資料
+  DB.users.set(user.userId, user);
+
+  res.json({
+    success: true,
+    message: `已獲得 ${cupCount} 次抽卡機會！`,
+    drawChances: user.drawChances,
+    addedChances: cupCount,
+  });
+});
+
+// 3.5. 使用抽卡次數抽卡（draw_chances > 0 時可用）
+app.post('/api/gacha/draw', authenticateToken, (req, res) => {
+  const user = DB.users.get(req.user.userId);
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: '用戶不存在',
+    });
+  }
+
+  if ((user.drawChances || 0) <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: '抽卡次數不足，去咖啡社買杯咖啡增加抽獎次數哦！',
+      drawChances: 0,
+    });
+  }
+
+  // 扣減抽卡次數
+  user.drawChances -= 1;
+
   // 執行抽卡
   const cardId = pullCard();
   const isNew = !user.collection[cardId];
@@ -234,16 +278,11 @@ app.post('/api/gacha/pull', authenticateToken, (req, res) => {
     user.collection[cardId].count += 1;
   }
 
-  // 標記 QR Code 為已使用
-  qrData.used = true;
-  qrData.usedBy = user.userId;
-  qrData.usedAt = new Date();
-
   // 記錄抽卡歷史
   DB.gachaHistory.push({
     userId: user.userId,
     cardId,
-    qrCode,
+    qrCode: null,
     timestamp: new Date(),
     isNew,
   });
@@ -256,6 +295,7 @@ app.post('/api/gacha/pull', authenticateToken, (req, res) => {
     card: { id: cardId },
     isNew,
     collection: user.collection,
+    drawChances: user.drawChances,
   });
 });
 
@@ -395,31 +435,29 @@ function authenticateAdmin(req, res, next) {
   }
 }
 
-// 6. 生成抽卡 QR Code
+// 6. 生成抽卡 QR Code（1 張 QR Code，含杯數資訊）
 app.post('/api/admin/qrcode/generate', authenticateAdmin, (req, res) => {
-  const { quantity = 1, expiresInDays = 30 } = req.body;
+  const { cupCount = 1, expiresInDays = 30 } = req.body;
 
-  const qrCodes = [];
+  const code = `COFFEE-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
 
-  for (let i = 0; i < quantity; i++) {
-    const code = `COFFEE-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+  DB.qrCodes.set(code, {
+    type: 'gacha',
+    cupCount,
+    used: false,
+    createdAt: new Date(),
+    expiresAt: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000),
+  });
 
-    DB.qrCodes.set(code, {
-      type: 'gacha',
-      used: false,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000),
-    });
-
-    qrCodes.push({
-      code,
-      url: `${FRONTEND_URL}/?qr=${code}`,
-    });
-  }
+  const qrCode = {
+    code,
+    url: `${FRONTEND_URL}/?qr=${code}`,
+    cupCount,
+  };
 
   res.json({
     success: true,
-    qrCodes,
+    qrCode,
   });
 });
 

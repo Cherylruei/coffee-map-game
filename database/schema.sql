@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name VARCHAR(100),
   picture_url TEXT,
   share_tokens INTEGER DEFAULT 3,
+  draw_chances INTEGER DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS gacha_history (
 CREATE TABLE IF NOT EXISTS qr_codes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   code VARCHAR(50) UNIQUE NOT NULL,
+  cup_count INTEGER DEFAULT 1,
   used BOOLEAN DEFAULT false,
   used_by UUID REFERENCES users(id),
   used_at TIMESTAMP WITH TIME ZONE,

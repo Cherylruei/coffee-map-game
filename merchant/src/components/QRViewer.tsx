@@ -4,21 +4,21 @@ import { QRCodeItem, PendingOrder } from '../types';
 import { copyText } from '../utils/format';
 
 interface Props {
-  qrCodes: QRCodeItem[];
-  drinkList: string[];
+  qrCode: QRCodeItem;
+  cupCount: number;
   pendingOrder: PendingOrder | null;
   onCommit: () => void;
   onCancel: () => void;
 }
 
-export function QRViewer({ qrCodes, drinkList, pendingOrder, onCommit, onCancel }: Props) {
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
-  const qrSize = Math.min(200, Math.floor(window.innerWidth * 0.6));
+export function QRViewer({ qrCode, cupCount, pendingOrder, onCommit, onCancel }: Props) {
+  const [copied, setCopied] = useState(false);
+  const qrSize = Math.min(240, Math.floor(window.innerWidth * 0.65));
 
-  async function handleCopy(url: string, idx: number, code: string) {
-    await copyText(code);
-    setCopiedIdx(idx);
-    setTimeout(() => setCopiedIdx(null), 2000);
+  async function handleCopy() {
+    await copyText(qrCode.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   const paymentLabel = pendingOrder?.paymentMethod === 'line_pay' ? 'LINE Pay' : '現金';
@@ -28,7 +28,7 @@ export function QRViewer({ qrCodes, drinkList, pendingOrder, onCommit, onCancel 
       {/* 頂部標題列 */}
       <div className="qr-viewer-bar">
         <div className="qr-viewer-title">
-          QR Code — 共 {qrCodes.length} 張
+          QR Code — 共 {cupCount} 杯抽卡機會
         </div>
       </div>
 
@@ -61,21 +61,19 @@ export function QRViewer({ qrCodes, drinkList, pendingOrder, onCommit, onCancel 
       )}
 
       <div className="qr-viewer-body">
-        {qrCodes.map((qr, idx) => (
-          <div key={qr.code} className="viewer-qr-card">
-            <div className="drink-label">{drinkList[idx] || '抽卡'}</div>
-            <div className="qr-img-wrap">
-              <QRCodeCanvas value={qr.url} size={qrSize} />
-            </div>
-            <div className="qr-code-txt">{qr.code}</div>
-            <button
-              className={`viewer-copy-btn${copiedIdx === idx ? ' copied' : ''}`}
-              onClick={() => handleCopy(qr.url, idx, qr.code)}
-            >
-              {copiedIdx === idx ? '已複製！' : '複製代碼'}
-            </button>
+        <div className="viewer-qr-card">
+          <div className="drink-label">🎫 掃描後可獲得 {cupCount} 次抽卡機會</div>
+          <div className="qr-img-wrap">
+            <QRCodeCanvas value={qrCode.url} size={qrSize} />
           </div>
-        ))}
+          <div className="qr-code-txt">{qrCode.code}</div>
+          <button
+            className={`viewer-copy-btn${copied ? ' copied' : ''}`}
+            onClick={handleCopy}
+          >
+            {copied ? '已複製！' : '複製代碼'}
+          </button>
+        </div>
       </div>
 
       {/* 底部操作列 - 固定在底部 */}
