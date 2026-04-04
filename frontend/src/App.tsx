@@ -46,6 +46,19 @@ function App() {
     }
   };
 
+  // 已登入使用者重新進入頁面時，自動載入收藏資料
+  useEffect(() => {
+    if (isAuthenticated) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      // 若不是 LINE callback 流程，才在此載入（callback 流程由下方 useEffect 處理）
+      if (!code) {
+        loadCollection();
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 只在元件掛載時執行一次
+
   // 處理 LINE Login 回調 & 分享領取
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);

@@ -135,6 +135,7 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
         top: 0,
         left: 0,
         height: '100vh',
+        width: '100vw',
         background: 'rgba(0,0,0,0.8)',
         zIndex: 9998,
         display: 'flex',
