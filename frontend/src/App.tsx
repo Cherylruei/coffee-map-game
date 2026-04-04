@@ -18,7 +18,7 @@ let qrCodeProcessing = false;
 
 function App() {
   const { isAuthenticated, setAuth } = useAuthStore();
-  const { collection, shareTokens, setCollection, setShareTokens } =
+  const { collection, shareTokens, setCollection, setShareTokens, setPendingShares } =
     useCollectionStore();
   const [showScanner, setShowScanner] = useState(false);
   const [gachaResult, setGachaResult] = useState<{
@@ -38,6 +38,7 @@ function App() {
       const response = await userAPI.getCollection();
       if (response.data.success) {
         setCollection(response.data.collection);
+        setPendingShares(response.data.pendingShares || {});
         setShareTokens(response.data.shareTokens);
       }
     } catch (error) {
@@ -83,6 +84,7 @@ function App() {
         } catch (error: any) {
           console.error('領取分享失敗:', error);
           alert(error.response?.data?.message || '領取失敗，請稍後再試');
+          window.history.replaceState({}, document.title, '/');
         }
       })();
     }

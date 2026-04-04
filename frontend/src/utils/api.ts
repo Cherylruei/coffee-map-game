@@ -55,4 +55,5 @@ export const gachaAPI = {
 export const shareAPI = {
     create: (cardId: number) => api.post('/share/create', { cardId }),
     claim: (shareCode: string) => api.post('/share/claim', { shareCode }),
+    cancel: (cardId: number) => api.post('/share/cancel', { cardId }),
 };

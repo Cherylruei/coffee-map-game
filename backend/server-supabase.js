@@ -216,7 +216,7 @@ app.post('/api/auth/line/callback', async (req, res) => {
   }
 });
 
-// 2. 取得用戶收藏
+// 2. 取得用戶收藏（含待接收分享）
 app.get('/api/user/collection', authenticateToken, async (req, res) => {
   try {
     const { data: user } = await supabase
@@ -235,9 +235,25 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
       collection[item.card_id] = item.count;
     });
 
+    // === 獲取已發出但未被接收的分享（排除已取消的） ===
+    const { data: pendingShares } = await supabase
+      .from('shares')
+      .select('card_id')
+      .eq('from_user_id', req.user.userId)
+      .eq('claimed', false)
+      .or('cancelled.is.null,cancelled.eq.false')
+      .gte('expires_at', new Date().toISOString());
+
+    const pendingSharesByCard = {};
+    pendingShares?.forEach((share) => {
+      pendingSharesByCard[share.card_id] =
+        (pendingSharesByCard[share.card_id] || 0) + 1;
+    });
+
     res.json({
       success: true,
       collection,
+      pendingShares: pendingSharesByCard, // { cardId: count, ... }
       shareTokens: user?.share_tokens || 3,
     });
   } catch (error) {
@@ -324,59 +340,71 @@ app.post('/api/gacha/pull', authenticateToken, async (req, res) => {
   }
 });
 
-// 4. 分享卡片
+// 4. 分享卡片（只生成分享鏈接，不扣除卡片或分享次數）
 app.post('/api/share/create', authenticateToken, async (req, res) => {
   try {
     const { cardId } = req.body;
 
-    const { data: user } = await supabase
+    // === 驗證所有條件（不修改任何資料） ===
+    const { data: user, error: userError } = await supabase
       .from('users')
       .select('share_tokens')
       .eq('id', req.user.userId)
       .single();
 
-    if (!user || user.share_tokens <= 0)
+    if (userError || !user) {
+      return res
+        .status(400)
+        .json({ success: false, message: '使用者不存在' });
+    }
+
+    if (user.share_tokens <= 0) {
       return res
         .status(400)
         .json({ success: false, message: '分享次數已用完' });
+    }
 
-    const { data: card } = await supabase
+    const { data: card, error: cardError } = await supabase
       .from('collection')
       .select('count')
       .eq('user_id', req.user.userId)
       .eq('card_id', cardId)
       .single();
 
-    if (!card || card.count <= 1)
+    if (cardError || !card) {
+      return res
+        .status(400)
+        .json({ success: false, message: '該卡片不存在' });
+    }
+
+    if (card.count <= 0) {
       return res
         .status(400)
         .json({ success: false, message: '該卡片數量不足，無法分享' });
+    }
 
+    // === 只建立分享記錄，不扣除任何資料 ===
     const shareCode = `SHARE-${crypto.randomBytes(8).toString('hex')}`;
 
-    await supabase.from('shares').insert({
+    const { error: insertError } = await supabase.from('shares').insert({
       share_code: shareCode,
       from_user_id: req.user.userId,
       card_id: cardId,
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     });
 
-    await supabase
-      .from('collection')
-      .update({ count: card.count - 1 })
-      .eq('user_id', req.user.userId)
-      .eq('card_id', cardId);
-
-    await supabase
-      .from('users')
-      .update({ share_tokens: user.share_tokens - 1 })
-      .eq('id', req.user.userId);
+    if (insertError) {
+      console.error('Insert share error:', insertError);
+      return res
+        .status(500)
+        .json({ success: false, message: '建立分享記錄失敗' });
+    }
 
     res.json({
       success: true,
       shareCode,
-      shareUrl: `${req.protocol}://${req.get('host')}/?share=${shareCode.replace('SHARE-', '')}`,
-      remainingTokens: user.share_tokens - 1,
+      shareUrl: `${FRONTEND_URL}/?share=${shareCode.replace('SHARE-', '')}`,
+      remainingTokens: user.share_tokens, // 現在還沒扣除，所以返回原有值
     });
   } catch (error) {
     console.error('Share create error:', error);
@@ -384,7 +412,7 @@ app.post('/api/share/create', authenticateToken, async (req, res) => {
   }
 });
 
-// 5. 領取分享的卡片
+// 5. 領取分享的卡片（接收時才扣除分享方的卡片和分享次數）
 app.post('/api/share/claim', authenticateToken, async (req, res) => {
   try {
     const { shareCode } = req.body;
@@ -404,6 +432,10 @@ app.post('/api/share/claim', authenticateToken, async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: '分享連結已被領取' });
+    if (shareData.cancelled)
+      return res
+        .status(400)
+        .json({ success: false, message: '對方已取消分享' });
     if (shareData.from_user_id === req.user.userId)
       return res
         .status(400)
@@ -414,7 +446,23 @@ app.post('/api/share/claim', authenticateToken, async (req, res) => {
         .json({ success: false, message: '分享連結已過期' });
 
     const cardId = shareData.card_id;
+    const fromUserId = shareData.from_user_id;
 
+    // === 驗證分享方仍有該卡片 ===
+    const { data: fromUserCard } = await supabase
+      .from('collection')
+      .select('count')
+      .eq('user_id', fromUserId)
+      .eq('card_id', cardId)
+      .single();
+
+    if (!fromUserCard || fromUserCard.count <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: '分享方已沒有該卡片' });
+    }
+
+    // === 增加接收方的卡片數量 ===
     const { data: existingCard } = await supabase
       .from('collection')
       .select('count')
@@ -436,6 +484,28 @@ app.post('/api/share/claim', authenticateToken, async (req, res) => {
         .insert({ user_id: req.user.userId, card_id: cardId, count: 1 });
     }
 
+    // === 扣除分享方的卡片數量 ===
+    await supabase
+      .from('collection')
+      .update({ count: fromUserCard.count - 1 })
+      .eq('user_id', fromUserId)
+      .eq('card_id', cardId);
+
+    // === 扣除分享方的分享次數 ===
+    const { data: fromUser } = await supabase
+      .from('users')
+      .select('share_tokens')
+      .eq('id', fromUserId)
+      .single();
+
+    if (fromUser) {
+      await supabase
+        .from('users')
+        .update({ share_tokens: Math.max(0, (fromUser.share_tokens || 0) - 1) })
+        .eq('id', fromUserId);
+    }
+
+    // === 標記分享為已領取 ===
     await supabase
       .from('shares')
       .update({
@@ -459,6 +529,50 @@ app.post('/api/share/claim', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Share claim error:', error);
     res.status(500).json({ success: false, message: '領取失敗' });
+  }
+});
+
+// 5.5. 取消分享卡片
+app.post('/api/share/cancel', authenticateToken, async (req, res) => {
+  try {
+    const { cardId } = req.body;
+
+    // 找到該用戶的未領取、未取消的分享記錄
+    const { data: pendingShare, error: findError } = await supabase
+      .from('shares')
+      .select('id, share_code')
+      .eq('from_user_id', req.user.userId)
+      .eq('card_id', cardId)
+      .eq('claimed', false)
+      .or('cancelled.is.null,cancelled.eq.false')
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (findError || !pendingShare) {
+      return res
+        .status(400)
+        .json({ success: false, message: '找不到可取消的分享記錄' });
+    }
+
+    // 標記為已取消
+    const { error: updateError } = await supabase
+      .from('shares')
+      .update({ cancelled: true })
+      .eq('id', pendingShare.id);
+
+    if (updateError) {
+      console.error('Cancel share update error:', updateError);
+      return res
+        .status(500)
+        .json({ success: false, message: '取消分享失敗' });
+    }
+
+    res.json({ success: true, message: '分享已取消' });
+  } catch (error) {
+    console.error('Share cancel error:', error);
+    res.status(500).json({ success: false, message: '取消分享失敗' });
   }
 });
 
@@ -907,6 +1021,89 @@ app.put('/api/menu', authenticateAdmin, async (req, res) => {
   } catch (error) {
     console.error('Save menu error:', error);
     res.status(500).json({ success: false, message: '儲存菜單失敗' });
+  }
+});
+
+// ===== 分享功能管理 API =====
+
+// 16. 增加使用者分享次數（店家後台用於開發測試）
+app.post('/api/admin/users/add-share-tokens', authenticateAdmin, async (req, res) => {
+  try {
+    const { lineId, amount = 3 } = req.body;
+
+    if (!lineId) {
+      return res.status(400).json({ success: false, message: '缺少 lineId 參數' });
+    }
+
+    // 查找使用者
+    const { data: user, error: selectError } = await supabase
+      .from('users')
+      .select('id, display_name, share_tokens')
+      .eq('line_user_id', lineId)
+      .single();
+
+    if (selectError || !user) {
+      return res.status(404).json({ success: false, message: '使用者不存在' });
+    }
+
+    const newTokenCount = (user.share_tokens || 0) + amount;
+
+    // 更新 share_tokens
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ share_tokens: newTokenCount })
+      .eq('id', user.id);
+
+    if (updateError) throw updateError;
+
+    res.json({
+      success: true,
+      message: `已為 ${user.display_name} 增加 ${amount} 次分享次數`,
+      user: {
+        id: user.id,
+        lineId,
+        displayName: user.display_name,
+        previousTokens: user.share_tokens,
+        newTokens: newTokenCount,
+      },
+    });
+  } catch (error) {
+    console.error('Add share tokens error:', error);
+    res.status(500).json({ success: false, message: '操作失敗' });
+  }
+});
+
+// 17. 查詢使用者分享次數
+app.get('/api/admin/users/share-tokens', authenticateAdmin, async (req, res) => {
+  try {
+    const { lineId } = req.query;
+
+    if (!lineId) {
+      return res.status(400).json({ success: false, message: '缺少 lineId 參數' });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, display_name, share_tokens')
+      .eq('line_user_id', lineId)
+      .single();
+
+    if (error || !user) {
+      return res.status(404).json({ success: false, message: '使用者不存在' });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        lineId,
+        displayName: user.display_name,
+        shareTokens: user.share_tokens || 3,
+      },
+    });
+  } catch (error) {
+    console.error('Get share tokens error:', error);
+    res.status(500).json({ success: false, message: '查詢失敗' });
   }
 });
 
