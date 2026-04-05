@@ -34,7 +34,7 @@ body {
 .login-screen {
   display: flex;
   flex-direction: column;
-  align-items: center
+  align-items: center;
 }
 
 .login-screen,
@@ -70,8 +70,6 @@ body {
   color: white;
   border: none;
   border-radius: 12px;
-  padding: 14px 40px;
-  font-size: clamp(16px, 4vw, 18px);
   font-weight: bold;
   cursor: pointer;
   box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
@@ -103,6 +101,12 @@ body {
   align-items: center;
   gap: 12px;
   width: 100%;
+  font-size: 20px;
+  height: 176px; /* 3 × 50px + 2 × 12px gap = 174px, 略留餘量 */
+}
+
+.action-buttons > button {
+  height: 50px;
 }
 
 .menu-button {
@@ -110,14 +114,11 @@ body {
   color: #667eea;
   border: 2px solid #667eea;
   border-radius: 12px;
-  padding: 11px 40px;
-  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 600;
   cursor: pointer;
   width: 100%;
   max-width: 280px;
   transition: all 0.2s ease;
-  margin-top: 8px;
 }
 
 .menu-button:hover {
@@ -149,48 +150,34 @@ body {
   width: 100% !important;
 }
 
-/* ── Draw Chances Section ────────────────── */
-.draw-chances-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  max-width: 280px;
-  margin-top: 4px;
-}
-
-.draw-chances-badge {
-  font-size: clamp(15px, 4vw, 17px);
-  font-weight: 600;
-  color: #555;
-  background: linear-gradient(135deg, #fff7e6, #fff3cd);
-  border: 2px solid #ffc107;
-  border-radius: 12px;
-  padding: 8px 20px;
-  width: 100%;
-  text-align: center;
-}
-
-.draw-count {
-  font-size: clamp(18px, 5vw, 22px);
-  font-weight: 800;
-  color: #e67e22;
-}
-
+/* ── Draw Button (unified) ───────────────── */
 .draw-button {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
   border: none;
-  border-radius: 12px;
-  padding: 14px 40px;
-  font-size: clamp(16px, 4vw, 18px);
-  font-weight: bold;
+  border-radius: 14px;
   cursor: pointer;
   width: 100%;
+  max-width: 280px;
   transition: all 0.3s ease;
 }
 
+.draw-button-label {
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+.draw-button-count {
+  font-weight: 600;
+  opacity: 0.85;
+  line-height: 1.2;
+}
+
 .draw-button.active {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: linear-gradient(135deg, #d53ee7 0%, #f5576c 100%);
   color: white;
   box-shadow: 0 8px 20px rgba(245, 87, 108, 0.4);
   animation: pulse-draw 2s infinite;
@@ -213,7 +200,6 @@ body {
 }
 
 @keyframes pulse-draw {
-
   0%,
   100% {
     box-shadow: 0 8px 20px rgba(245, 87, 108, 0.4);

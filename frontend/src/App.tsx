@@ -18,8 +18,15 @@ let qrCodeProcessing = false;
 
 function App() {
   const { isAuthenticated, setAuth } = useAuthStore();
-  const { collection, shareTokens, drawChances, setCollection, setShareTokens, setPendingShares, setDrawChances } =
-    useCollectionStore();
+  const {
+    collection,
+    shareTokens,
+    drawChances,
+    setCollection,
+    setShareTokens,
+    setPendingShares,
+    setDrawChances,
+  } = useCollectionStore();
   const [showScanner, setShowScanner] = useState(false);
   const [gachaResult, setGachaResult] = useState<{
     cardId: number;
@@ -218,19 +225,17 @@ function App() {
                   📱 掃描 QR Code
                 </button>
 
-                {/* 抽卡次數顯示與抽卡按鈕 */}
-                <div className='draw-chances-section'>
-                  <div className='draw-chances-badge'>
-                    🎫 抽卡次數：<span className='draw-count'>{drawChances}</span>
-                  </div>
-                  <button
-                    className={`draw-button${drawChances > 0 ? ' active' : ' disabled'}`}
-                    onClick={handleDraw}
-                    disabled={drawingInProgress}
-                  >
-                    {drawingInProgress ? '抽卡中...' : '🎴 抽卡'}
-                  </button>
-                </div>
+                {/* 抽卡按鈕（含次數） */}
+                <button
+                  className={`draw-button${drawChances > 0 ? ' active' : ' disabled'}`}
+                  onClick={handleDraw}
+                  disabled={drawingInProgress}
+                >
+                  <span className='draw-button-label'>
+                    {drawingInProgress ? '⏳ 抽卡中...' : '🎴 抽卡'}
+                  </span>
+                  <span className='draw-button-count'>× {drawChances} 次</span>
+                </button>
 
                 <button
                   className='menu-button'
@@ -268,12 +273,21 @@ function App() {
 
       {/* 抽卡次數不足彈窗 */}
       {showNoChancesModal && (
-        <div className='modal-overlay' onClick={() => setShowNoChancesModal(false)}>
-          <div className='modal-content no-chances-modal' onClick={(e) => e.stopPropagation()}>
+        <div
+          className='modal-overlay'
+          onClick={() => setShowNoChancesModal(false)}
+        >
+          <div
+            className='modal-content no-chances-modal'
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className='modal-emoji'>☕</div>
             <h2>抽卡次數不足</h2>
             <p>去咖啡社買杯咖啡，增加你的抽獎次數哦！</p>
-            <button className='modal-close-btn' onClick={() => setShowNoChancesModal(false)}>
+            <button
+              className='modal-close-btn'
+              onClick={() => setShowNoChancesModal(false)}
+            >
               我知道了
             </button>
           </div>
