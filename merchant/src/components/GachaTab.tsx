@@ -75,21 +75,21 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
   async function generateNewQR() {
     setGenerating(true);
     setMsg('生成中…');
-    const data = await api<{ success: boolean; qrCodes: QRCodeItem[] }>(
+    const data = await api<{ success: boolean; qrCode: QRCodeItem }>(
       '/api/admin/qrcode/generate',
       sessionToken,
       {
         method: 'POST',
-        body: JSON.stringify({ quantity: 1, expiresInDays: 30 }),
+        body: JSON.stringify({ cupCount: 1, expiresInDays: 30 }),
       },
     );
     setGenerating(false);
 
-    if (!data?.success || !data.qrCodes?.[0]) {
+    if (!data?.success || !data.qrCode) {
       setMsg('生成失敗，請再試');
       return;
     }
-    const qr = data.qrCodes[0];
+    const qr = data.qrCode;
     setCurrentQR(qr);
     setIsUsed(false);
     setCopied(false);

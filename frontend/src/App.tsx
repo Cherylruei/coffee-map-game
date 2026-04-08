@@ -16,6 +16,8 @@ import './App.css';
 let lineCodeProcessing = false;
 let qrCodeProcessing = false;
 
+const PENDING_QR_KEY = 'pending_qr_code';
+
 function App() {
   const { isAuthenticated, setAuth } = useAuthStore();
   const {
@@ -56,6 +58,33 @@ function App() {
     }
   };
 
+  // 兌換待處理的 QR Code（登入後自動呼叫）
+  const redeemPendingQR = async () => {
+    const pendingQR = localStorage.getItem(PENDING_QR_KEY);
+    if (!pendingQR) return;
+    localStorage.removeItem(PENDING_QR_KEY);
+    try {
+      const response = await gachaAPI.pull(pendingQR);
+      if (response.data.success) {
+        setDrawChances(response.data.drawChances);
+        alert(`🎉 ${response.data.message}`);
+      }
+    } catch (error) {
+      const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+      alert(msg || '兌換失敗，請稍後再試');
+    }
+  };
+
+  // 頁面載入時：偵測 URL 中的 ?qr= 並暫存
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const qrParam = urlParams.get('qr');
+    if (qrParam) {
+      localStorage.setItem(PENDING_QR_KEY, qrParam);
+      window.history.replaceState({}, document.title, '/');
+    }
+  }, []);
+
   // 已登入使用者重新進入頁面時，自動載入收藏資料
   useEffect(() => {
     if (isAuthenticated) {
@@ -63,7 +92,7 @@ function App() {
       const code = urlParams.get('code');
       // 若不是 LINE callback 流程，才在此載入（callback 流程由下方 useEffect 處理）
       if (!code) {
-        loadCollection();
+        loadCollection().then(redeemPendingQR);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,6 +115,7 @@ function App() {
           if (response.data.success) {
             setAuth(response.data.user, response.data.token);
             await loadCollection();
+            await redeemPendingQR();
           }
         } catch (error) {
           console.error('LINE Login 失敗:', error);
@@ -204,7 +234,7 @@ function App() {
       <div className='main-content'>
         {!isAuthenticated ? (
           <div className='login-screen'>
-            <h1>☕ 咖啡地圖收集遊戲 ☕</h1>
+            <h1>☕咖啡地圖收集遊戲☕</h1>
             <p>掃描店家 QR Code，收集世界各地咖啡產地卡片！</p>
             <LoginButton />
             <button className='menu-button' onClick={() => setMenuOpen(true)}>

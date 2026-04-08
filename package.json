@@ -1,0 +1,24 @@
+{
+  "name": "coffee-map-game",
+  "version": "1.0.0",
+  "description": "掃描店家 QR Code，收集世界各地咖啡產地卡片的互動式遊戲。",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently --names \"backend,frontend,merchant\" --prefix-colors \"blue,green,yellow\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\" \"npm run dev --prefix merchant\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cherylruei/coffee-map-game.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Cherylruei/coffee-map-game/issues"
+  },
+  "homepage": "https://github.com/Cherylruei/coffee-map-game#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

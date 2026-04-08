@@ -683,14 +683,15 @@ body,
   gap: 12px;
 }
 .viewer-qr-card .qr-img-wrap {
-  width: min(220px, 68vw);
-  height: min(220px, 68vw);
+  width: fit-content;
+  height: fit-content;
   background: #fff;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
+  padding: 4px;
 }
 .viewer-qr-card .drink-label {
   font-size: 1rem;
