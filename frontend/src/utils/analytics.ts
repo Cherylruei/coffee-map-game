@@ -57,3 +57,13 @@ export function trackQRScan(result: 'success' | 'error'): void {
 export function trackGachaDraw(cardId: number, isNew: boolean): void {
   safeGtag('gacha_draw', { card_id: cardId, is_new: isNew })
 }
+
+// GA4 標準事件：新會員首次註冊
+export function trackSignUp(method: string): void {
+  safeGtag('sign_up', { method })
+}
+
+// 分享卡片被成功領取
+export function trackShareCardClaimed(cardId: number, isNewCard: boolean): void {
+  safeGtag('share_card_claimed', { card_id: cardId, is_new_card: isNewCard })
+}

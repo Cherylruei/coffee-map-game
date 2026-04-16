@@ -5,6 +5,8 @@ import {
   trackLoginSuccess,
   trackQRScan,
   trackGachaDraw,
+  trackSignUp,
+  trackShareCardClaimed,
 } from './analytics'
 
 describe('analytics', () => {
@@ -129,6 +131,41 @@ describe('analytics', () => {
 
     it('does not throw when gtag is not loaded', () => {
       expect(() => trackGachaDraw(1, false)).not.toThrow()
+    })
+  })
+
+  describe('trackSignUp', () => {
+    it('calls gtag with sign_up event and method', () => {
+      const mockGtag = vi.fn()
+      vi.stubGlobal('gtag', mockGtag)
+
+      trackSignUp('LINE')
+
+      expect(mockGtag).toHaveBeenCalledWith('event', 'sign_up', {
+        method: 'LINE',
+      })
+    })
+
+    it('does not throw when gtag is not loaded', () => {
+      expect(() => trackSignUp('LINE')).not.toThrow()
+    })
+  })
+
+  describe('trackShareCardClaimed', () => {
+    it('calls gtag with share_card_claimed event, card_id and is_new_card', () => {
+      const mockGtag = vi.fn()
+      vi.stubGlobal('gtag', mockGtag)
+
+      trackShareCardClaimed(3, true)
+
+      expect(mockGtag).toHaveBeenCalledWith('event', 'share_card_claimed', {
+        card_id: 3,
+        is_new_card: true,
+      })
+    })
+
+    it('does not throw when gtag is not loaded', () => {
+      expect(() => trackShareCardClaimed(1, false)).not.toThrow()
     })
   })
 })

@@ -10,7 +10,7 @@ import { MenuOverlay } from './components/MenuOverlay/MenuOverlay';
 import { useAuthStore } from './hooks/useAuth';
 import { useCollectionStore } from './hooks/useCollection';
 import { authAPI, userAPI, gachaAPI, shareAPI } from './utils/api';
-import { trackLoginSuccess, trackQRScan, trackGachaDraw, trackPageView } from './utils/analytics';
+import { trackLoginSuccess, trackQRScan, trackGachaDraw, trackPageView, trackSignUp, trackShareCardClaimed } from './utils/analytics';
 import './App.css';
 
 // 模組層級變數，StrictMode 的 unmount/remount 不會重置
@@ -116,6 +116,7 @@ function App() {
           const response = await authAPI.lineCallback(code, redirectUri);
           if (response.data.success) {
             setAuth(response.data.user, response.data.token);
+            if (response.data.isNewUser) trackSignUp('LINE');
             trackLoginSuccess('LINE');
             await loadCollection();
             await redeemPendingQR();
@@ -130,6 +131,7 @@ function App() {
         try {
           const response = await shareAPI.claim(shareCode);
           if (response.data.success) {
+            trackShareCardClaimed(response.data.card.id, response.data.isNew);
             setGachaResult({
               cardId: response.data.card.id,
               isNew: response.data.isNew,

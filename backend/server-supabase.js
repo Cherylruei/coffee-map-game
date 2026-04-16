@@ -180,6 +180,8 @@ app.post('/api/auth/line/callback', async (req, res) => {
       .eq('line_user_id', lineProfile.userId)
       .single();
 
+    const isNewUser = !user;
+
     if (!user) {
       const { data: newUser, error } = await supabase
         .from('users')
@@ -203,6 +205,7 @@ app.post('/api/auth/line/callback', async (req, res) => {
 
     res.json({
       success: true,
+      isNewUser,
       user: {
         userId: user.line_user_id,
         displayName: user.display_name,
