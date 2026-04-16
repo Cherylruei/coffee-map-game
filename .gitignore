@@ -20,6 +20,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Test coverage output
+coverage/
+*.lcov
+
+# Claude Code local settings (個人 IDE 設定，不需要共享)
+.claude/settings.local.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
