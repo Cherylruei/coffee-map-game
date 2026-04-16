@@ -17,10 +17,13 @@ function initGA4(): void {
   document.head.appendChild(script)
 
   // 初始化 dataLayer 和 gtag 函式
+  // ⚠️ 必須用 arguments 物件（不能用 ...args spread）
+  // GA4 的 gtag.js 載入後會掃描 dataLayer，只處理 Arguments 物件格式的指令
   window.dataLayer = window.dataLayer || []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(window as any).gtag = function (...args: unknown[]) {
-    window.dataLayer.push(args)
+  ;(window as any).gtag = function () {
+    // eslint-disable-next-line prefer-rest-params
+    window.dataLayer.push(arguments)
   }
   ;(window as any).gtag('js', new Date())
   ;(window as any).gtag('config', measurementId)
