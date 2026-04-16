@@ -253,7 +253,7 @@ VITE_GA_MEASUREMENT_ID=   # 留空 → 本地不送 GA4
 
 ## 七、本次寫了哪些測試？
 
-檔案：`frontend/src/utils/analytics.test.ts`（13 個測試）
+檔案：`frontend/src/utils/analytics.test.ts`（**17 個測試**）
 
 ### 測試群組說明
 
@@ -290,6 +290,18 @@ VITE_GA_MEASUREMENT_ID=   # 留空 → 本地不送 GA4
 ✓ gtag 未載入時不 crash
 ```
 
+#### 6. `trackSignUp` 新會員（2 個）
+```
+✓ 呼叫 sign_up 事件，帶入 method: 'LINE'
+✓ gtag 未載入時不 crash
+```
+
+#### 7. `trackShareCardClaimed` 分享領取（2 個）
+```
+✓ 呼叫 share_card_claimed 事件，帶入 card_id 和 is_new_card
+✓ gtag 未載入時不 crash
+```
+
 ### 覆蓋率結果
 
 ```
@@ -307,44 +319,35 @@ analytics.ts  |   100%  |   100%   |   100%  |   100%
 | `login_success` | LINE 登入成功後 | `method: 'LINE'` | 報表 → 事件 |
 | `qr_scan` | QR 掃碼成功/失敗 | `result: 'success'/'error'` | 報表 → 事件 |
 | `gacha_draw` | 抽卡成功 | `card_id: number, is_new: boolean` | 報表 → 事件 |
+| `sign_up` | LINE 新會員首次登入 | `method: 'LINE'` | 報表 → 事件 → sign_up |
+| `share_card_claimed` | 好友分享連結被領取 | `card_id: number, is_new_card: boolean` | 報表 → 事件 |
 
 ---
 
-## 九、尚未加入的追蹤（待辦）
+## 九、追蹤實作細節
 
-### 問題：初次登入的新會員怎麼追蹤？
+### `sign_up`：後端偵測新會員並回傳 `isNewUser`
 
-目前 `login_success` 無法區分「新會員」vs「舊會員回訪」。
-
-**解法：後端回傳 `isNewUser` 欄位**
+後端 `server-supabase.js` 在 LINE callback 時，判斷使用者是否第一次登入：
 
 ```typescript
 // App.tsx 的 LINE callback 處理
 const response = await authAPI.lineCallback(code, redirectUri);
 if (response.data.success) {
-  if (response.data.isNewUser) {
-    trackEvent('sign_up', { method: 'LINE' })  // GA4 標準事件名稱
-  }
+  if (response.data.isNewUser) trackSignUp('LINE')   // 只在新會員觸發
   trackLoginSuccess('LINE')
 }
 ```
 
 **GA4 後台可查：** 事件 → `sign_up` → 每日新增會員趨勢
 
-### 問題：透過好友分享卡片加入的會員怎麼追蹤？
-
-目前分享流程（`?share=xxx` URL 參數）沒有追蹤。
-
-**解法：在分享領取成功時追蹤**
+### `share_card_claimed`：分享卡片被領取時追蹤
 
 ```typescript
 // App.tsx 的 shareCode 處理
 const response = await shareAPI.claim(shareCode);
 if (response.data.success) {
-  trackEvent('share_card_claimed', {
-    card_id: response.data.card.id,
-    is_new_user: response.data.isNewUser ?? false,
-  })
+  trackShareCardClaimed(response.data.card.id, response.data.isNew)
 }
 ```
 
@@ -352,7 +355,7 @@ if (response.data.success) {
 - 事件 → `share_card_claimed` → 分享帶來的互動數
 - 搭配 `sign_up` 事件 → 可算出「分享帶來新會員的比例」
 
-### 其他待加入的追蹤（功能 2-4 完成後）
+### 待加入的追蹤（功能 2-4 完成後）
 
 | 事件 | 觸發時機 |
 |------|---------|
