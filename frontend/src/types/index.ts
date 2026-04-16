@@ -1,4 +1,12 @@
 // TypeScript 型別定義
+
+// GA4 全域型別
+declare global {
+  interface Window {
+    dataLayer: unknown[]
+  }
+}
+
 export interface User {
     id: string;
     lineUserId: string;

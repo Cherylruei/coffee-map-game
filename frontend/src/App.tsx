@@ -10,6 +10,7 @@ import { MenuOverlay } from './components/MenuOverlay/MenuOverlay';
 import { useAuthStore } from './hooks/useAuth';
 import { useCollectionStore } from './hooks/useCollection';
 import { authAPI, userAPI, gachaAPI, shareAPI } from './utils/api';
+import { trackLoginSuccess, trackQRScan, trackGachaDraw, trackPageView } from './utils/analytics';
 import './App.css';
 
 // 模組層級變數，StrictMode 的 unmount/remount 不會重置
@@ -75,8 +76,9 @@ function App() {
     }
   };
 
-  // 頁面載入時：偵測 URL 中的 ?qr= 並暫存
+  // 頁面載入時：追蹤頁面瀏覽 & 偵測 URL 中的 ?qr= 並暫存
   useEffect(() => {
+    trackPageView('/');
     const urlParams = new URLSearchParams(window.location.search);
     const qrParam = urlParams.get('qr');
     if (qrParam) {
@@ -114,6 +116,7 @@ function App() {
           const response = await authAPI.lineCallback(code, redirectUri);
           if (response.data.success) {
             setAuth(response.data.user, response.data.token);
+            trackLoginSuccess('LINE');
             await loadCollection();
             await redeemPendingQR();
           }
@@ -166,11 +169,13 @@ function App() {
       const response = await gachaAPI.pull(qrCode);
 
       if (response.data.success) {
+        trackQRScan('success');
         setDrawChances(response.data.drawChances);
         setShowScanner(false);
         alert(`🎉 ${response.data.message}`);
       }
     } catch (error: any) {
+      trackQRScan('error');
       console.error('兌換失敗:', error);
       alert(error.response?.data?.message || '兌換失敗，請稍後再試');
     } finally {
@@ -194,6 +199,7 @@ function App() {
       const response = await gachaAPI.draw();
 
       if (response.data.success) {
+        trackGachaDraw(response.data.card.id, response.data.isNew);
         setGachaResult({
           cardId: response.data.card.id,
           isNew: response.data.isNew,
