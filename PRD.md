@@ -1,9 +1,9 @@
 # 咖啡地圖收集系統 - 產品需求文件 (PRD)
 
-**版本：** v1.0  
-**最後更新：** 2026-03-20  
+**版本：** v1.2  
+**最後更新：** 2026-04-17  
 **專案負責人：** Cheryl  
-**文件狀態：** 已確認
+**文件狀態：** 持續迭代中
 
 ---
 
@@ -204,7 +204,7 @@ Alice：
 |                | 記錄登入店員           | P0     | 用於收款記錄                       |
 | **菜單管理**   | 查看菜單               | P0     | 顯示所有品項                       |
 |                | 售完標記               | P0     | 標示缺貨品項                       |
-|                | 新增/編輯品項          | P1     | 管理員功能                         |
+|                | 新增/編輯/刪除品項     | P1     | ✅ 已實作（Week 2）行內編輯、同步前台 |
 | **點單功能**   | 選擇品項               | P0     | 必須                               |
 |                | 選擇數量               | P0     | 必須                               |
 |                | **【新增】客製化加價** | P0     | Double Shot +$15，一杯限一個       |
@@ -1551,6 +1551,49 @@ GET    /api/inventory/suggestion    補貨建議
 - ✅ 快速修復問題
 - ✅ 功能微調
 
+---
+
+#### Phase 4：增強功能迭代（2026-04 起）
+
+> 使用 ECC（Everything Claude Code）TDD 工作流程開發，搭配 `/tdd`、`/code-review`、`/security-review` 等指令。
+
+**Week 1（✅ 完成）：GA4 事件追蹤（功能 5）**
+
+- ✅ 建立 `analytics.ts` 模組（封裝 gtag 呼叫）
+- ✅ 修正 `arguments` vs `...args` GA4 相容性問題
+- ✅ 17 個 Unit Tests（含 PII 隱私保護驗證）
+- ✅ 追蹤事件：`page_view`、`login_success`、`qr_scan`、`gacha_draw`、`sign_up`、`share_card_claimed`
+- ✅ 後端新增 `isNewUser` 回傳，區分新舊會員
+
+**Week 2（🔄 進行中）：後台菜單直接編輯（功能 1）**
+
+- 🔄 商家後台 `MenuTab.tsx` 行內編輯品項名稱與價格
+- 🔄 新增 / 刪除品項、開關售完狀態
+- 🔄 後端 `PUT /api/menu` API（需管理員驗證）
+- 🔄 同步更新前台顧客菜單
+- 🔄 `MenuTab.test.tsx` TDD 測試
+
+**Week 3-4（⏳ 計畫中）：現金儲值（功能 2）**
+
+- 新增儲值金資料表（Supabase）
+- 儲值 QR Code 流程
+- 管理員儲值確認介面
+- 消費時自動扣款
+- 儲值餘額顯示
+- `/security-review` 審查金流邏輯
+
+**Week 5（⏳ 計畫中）：會員消費紀錄（功能 3）**
+
+- 消費明細頁面（品項、日期、金額、付款方式）
+- URL state 實作（篩選條件保留在網址列）
+- 分頁載入
+
+**Week 6（⏳ 計畫中）：每月自動報表 + Excel 匯出（功能 4）**
+
+- 月報自動彙整（訂單、營收、熱銷品項）
+- Excel 匯出（`.xlsx` 下載）
+- `/schedule` 排程設定（月底自動產生）
+
 ### 8.2 功能優先級
 
 #### P0 - 必須有（MVP）
@@ -1587,12 +1630,19 @@ GET    /api/inventory/suggestion    補貨建議
 - ✓ 單獨生成 QR Code
 - ✓ 卡片詳情頁面
 
+#### P1.5 - Phase 4 新增功能（2026-04 起）
+
+- ✅ GA4 事件追蹤（page_view / login_success / sign_up / qr_scan / gacha_draw / share_card_claimed）
+- 🔄 後台菜單品項管理（新增/編輯/刪除，行內編輯）
+- ⏳ 現金儲值功能（儲值金資料表、QR flow、餘額扣款）
+- ⏳ 會員消費紀錄（明細查詢、URL state 篩選）
+- ⏳ 每月自動報表 + Excel 匯出
+
 #### P2 - 未來擴充
 
 - ✓ 折扣券碼系統（COFFEE50 格式）
 - ✓ 多種客製化選項（燕麥奶等）
 - ✓ 營業時間自動開關
-- ✓ 菜單品項管理（新增/編輯）
 - ✓ 更多盤點項目（糖漿、紙杯等）
 - ✓ 成本分析功能
 
@@ -1697,19 +1747,26 @@ GET    /api/inventory/suggestion    補貨建議
 
 #### 10.1.2 追蹤事件設計
 
-**消費者前台事件**
+**消費者前台事件（已實作）**
 
-| 事件名稱              | 觸發時機        | 參數                                         | 用途         |
-| --------------------- | --------------- | -------------------------------------------- | ------------ |
-| `page_view`           | 頁面瀏覽        | page_title, page_location                    | 了解流量來源 |
-| `login`               | LINE Login 成功 | method: 'line'                               | 追蹤登入率   |
-| `view_menu`           | 查看菜單頁面    | -                                            | 菜單瀏覽數   |
-| `scan_qr`             | 掃描 QR Code    | -                                            | QR 掃描率    |
-| `gacha_pull`          | 執行抽卡        | card_id, card_name, card_rarity, is_new      | 抽卡行為分析 |
-| `collection_progress` | 收集進度變化    | cards_collected, total_cards                 | 收集進度追蹤 |
-| `reward_unlocked`     | 解鎖獎勵        | reward_type: 'collection_12' / 'purchase_50' | 獎勵達成率   |
-| `share_card`          | 分享卡片        | card_id                                      | 分享功能使用 |
-| `view_card_detail`    | 查看卡片詳情    | card_id                                      | 卡片興趣度   |
+| 事件名稱               | 觸發時機              | 參數                                  | 狀態 | 用途             |
+| ---------------------- | --------------------- | ------------------------------------- | ---- | ---------------- |
+| `page_view`            | 頁面載入              | `page_path: '/'`                      | ✅   | 了解流量來源     |
+| `login_success`        | LINE Login 成功       | `method: 'LINE'`                      | ✅   | 追蹤登入率       |
+| `sign_up`              | 新會員首次登入        | `method: 'LINE'`                      | ✅   | 新會員成長趨勢   |
+| `qr_scan`              | 掃描 QR Code          | `result: 'success' \| 'error'`        | ✅   | QR 掃描成功率    |
+| `gacha_draw`           | 抽卡                  | `card_id: number, is_new: boolean`    | ✅   | 抽卡行為分析     |
+| `share_card_claimed`   | 好友分享連結被領取    | `card_id: number, is_new_card: boolean` | ✅ | 分享互動率       |
+
+**消費者前台事件（待實作）**
+
+| 事件名稱               | 觸發時機           | 參數                                         | 狀態 | 用途           |
+| ---------------------- | ------------------ | -------------------------------------------- | ---- | -------------- |
+| `view_menu`            | 查看菜單頁面       | -                                            | ⏳   | 菜單瀏覽數     |
+| `collection_progress`  | 收集進度變化       | `cards_collected, total_cards`               | ⏳   | 收集進度追蹤   |
+| `reward_unlocked`      | 解鎖獎勵           | `reward_type: 'collection_12'`               | ⏳   | 獎勵達成率     |
+| `share_card`           | 建立分享連結       | `card_id`                                    | ⏳   | 分享功能使用   |
+| `topup_complete`       | 現金儲值完成       | `amount`                                     | ⏳   | 儲值金流分析   |
 
 **商家後台事件**
 
@@ -1807,61 +1864,51 @@ QR 掃描成功率
 
 #### 10.1.4 事件實作範例
 
-**前端實作（React）**
+**前端實作（React + TypeScript）**
 
-```javascript
-// 初始化 GA4
-import ReactGA from 'react-ga4';
+> 實際實作於 `frontend/src/utils/analytics.ts`，使用原生 gtag（非 ReactGA 套件）。
+> 關鍵：gtag 的 `dataLayer.push` 必須使用 `arguments` 物件（不能用 `...args` spread），
+> 否則 GA4 無法識別指令格式。
 
-ReactGA.initialize('G-XXXXXXXXXX');
+```typescript
+// frontend/src/utils/analytics.ts
 
-// 頁面瀏覽
-useEffect(() => {
-  ReactGA.send({ hitType: 'pageview', page: window.location.pathname });
-}, []);
+function initGA4(): void {
+  const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID
+  if (!measurementId) return
 
-// 登入事件
-const handleLogin = (userData) => {
-  ReactGA.event({
-    category: 'User',
-    action: 'login',
-    label: 'line_login',
-  });
-};
+  const script = document.createElement('script')
+  script.async = true
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`
+  document.head.appendChild(script)
 
-// 抽卡事件
-const handleGachaPull = (cardData) => {
-  ReactGA.event({
-    category: 'Game',
-    action: 'gacha_pull',
-    label: cardData.cardName,
-    value: cardData.isNew ? 1 : 0,
-    card_id: cardData.cardId,
-    card_rarity: cardData.rarity,
-    is_new: cardData.isNew,
-  });
-};
+  window.dataLayer = window.dataLayer || []
+  ;(window as any).gtag = function () {
+    window.dataLayer.push(arguments)  // ← arguments 物件，非 ...args
+  }
+  ;(window as any).gtag('js', new Date())
+  ;(window as any).gtag('config', measurementId)
+}
 
-// 收集進度
-const trackCollectionProgress = (collected, total) => {
-  ReactGA.event({
-    category: 'Game',
-    action: 'collection_progress',
-    label: `${collected}/${total}`,
-    value: collected,
-    cards_collected: collected,
-    total_cards: total,
-  });
-};
-
-// 分享卡片
-const handleShare = (cardId) => {
-  ReactGA.event({
-    category: 'Social',
-    action: 'share_card',
-    label: cardId,
-  });
-};
+// 各追蹤函式
+export function trackPageView(pagePath: string): void {
+  safeGtag('page_view', { page_path: pagePath })
+}
+export function trackLoginSuccess(method: string): void {
+  safeGtag('login_success', { method })
+}
+export function trackSignUp(method: string): void {
+  safeGtag('sign_up', { method })
+}
+export function trackQRScan(result: 'success' | 'error'): void {
+  safeGtag('qr_scan', { result })
+}
+export function trackGachaDraw(cardId: number, isNew: boolean): void {
+  safeGtag('gacha_draw', { card_id: cardId, is_new: isNew })
+}
+export function trackShareCardClaimed(cardId: number, isNewCard: boolean): void {
+  safeGtag('share_card_claimed', { card_id: cardId, is_new_card: isNewCard })
+}
 ```
 
 **後端實作（Node.js）**
