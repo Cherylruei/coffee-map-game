@@ -210,8 +210,10 @@ export function OrderTab({
 
   return (
     <>
-      {/* 菜單 */}
-      {menuData.categories.map((cat) => (
+      {/* 菜單：跳過無可供應品項的分類 */}
+      {menuData.categories
+        .filter((cat) => cat.items.some((i) => i.available))
+        .map((cat) => (
         <div key={cat.id}>
           <div className='cat-title'>{cat.name}</div>
           {cat.items

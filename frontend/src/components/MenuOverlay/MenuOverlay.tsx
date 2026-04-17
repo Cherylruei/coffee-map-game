@@ -71,6 +71,11 @@ const STATIC_MENU: MenuCategory[] = [
     ],
   },
   {
+    id: 'special',
+    name: '特調',
+    items: [],
+  },
+  {
     id: 'custom',
     name: '客製',
     items: [
@@ -130,7 +135,9 @@ export function MenuOverlay({ isOpen, onClose }: Props) {
 
           <hr className='menu-divider' />
 
-          {categories.map((cat) => (
+          {categories
+            .filter((cat) => cat.items.some((i) => i.available))
+            .map((cat) => (
             <div key={cat.id} className='menu-category'>
               <div className='menu-cat-title'>☕ {cat.name}系列</div>
               <div className='menu-items'>

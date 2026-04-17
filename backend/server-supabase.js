@@ -1016,7 +1016,8 @@ app.get('/api/menu', async (req, res) => {
       .eq('key', 'menu')
       .single();
     if (setting?.value?.categories) {
-      return res.json({ success: true, categories: setting.value.categories });
+      const categories = ensureSpecialCategory(setting.value.categories);
+      return res.json({ success: true, categories });
     }
   } catch (_) {
     /* settings 表不存在時直接 fallback */
@@ -1024,12 +1025,30 @@ app.get('/api/menu', async (req, res) => {
 
   try {
     const menu = require('./menu.json');
-    res.json({ success: true, ...menu });
+    const categories = ensureSpecialCategory(menu.categories || []);
+    res.json({ success: true, ...menu, categories });
   } catch (error) {
     console.error('Get menu error:', error);
     res.status(500).json({ success: false, message: '取得菜單失敗' });
   }
 });
+
+/**
+ * 確保 categories 陣列中包含「特調」系列。
+ * 若不存在，插入在「客製（custom）」之前；若客製也不存在則附加至末尾。
+ * 不修改原陣列，回傳新陣列。
+ */
+function ensureSpecialCategory(categories) {
+  if (categories.some((c) => c.id === 'special')) return categories;
+  const specialCategory = { id: 'special', name: '特調', items: [] };
+  const customIndex = categories.findIndex((c) => c.id === 'custom');
+  if (customIndex === -1) return [...categories, specialCategory];
+  return [
+    ...categories.slice(0, customIndex),
+    specialCategory,
+    ...categories.slice(customIndex),
+  ];
+}
 
 // 18. 儲存菜單（需要管理員驗證）
 app.put('/api/menu', authenticateAdmin, async (req, res) => {

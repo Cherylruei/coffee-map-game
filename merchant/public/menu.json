@@ -25,6 +25,18 @@
         { "id": "ice_honey_latte",        "name": "冰蜂蜜拿鐵",   "price": 55, "available": true },
         { "id": "hot_honey_latte",        "name": "熱蜂蜜拿鐵",   "price": 55, "available": true }
       ]
+    },
+    {
+      "id": "special",
+      "name": "特調",
+      "items": []
+    },
+    {
+      "id": "custom",
+      "name": "客製",
+      "items": [
+        { "id": "single_shot", "name": "Single Shot", "price": 15, "available": true }
+      ]
     }
   ]
 }
