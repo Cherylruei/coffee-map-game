@@ -58,10 +58,6 @@ export function OrderTab({
 
   const allItems: MenuItem[] =
     menuData?.categories.flatMap((c) => c.items) || [];
-  const customCategoryId = menuData?.categories?.find(
-    (c) => c.id === 'custom',
-  )?.id;
-
   let totalCups = 0;
   let totalAmount = 0;
   let qrCups = 0; // 用於 QR Code 的杯子數（不含客製項）
@@ -95,12 +91,16 @@ export function OrderTab({
         qty: orderItems[item.id],
       }));
 
+    const body: Record<string, unknown> = { cupCount: qrCups, expiresInDays: 30 };
+    if (paymentMethod === 'wallet' && finalAmount > 0) {
+      body.walletAmount = finalAmount;
+    }
     const data = await api<{ success: boolean; qrCode: QRCodeItem }>(
       '/api/admin/qrcode/generate',
       sessionToken,
       {
         method: 'POST',
-        body: JSON.stringify({ cupCount: qrCups, expiresInDays: 30 }),
+        body: JSON.stringify(body),
       },
     );
     setGenerating(false);
@@ -282,6 +282,12 @@ export function OrderTab({
               >
                 💚 LINE Pay
               </button>
+              <button
+                className={`payment-btn${paymentMethod === 'wallet' ? ' active' : ''}`}
+                onClick={() => setPaymentMethod('wallet')}
+              >
+                💰 錢包
+              </button>
             </div>
           </div>
 
@@ -307,7 +313,7 @@ export function OrderTab({
             <>
               <div>
                 共 {totalCups} 杯・
-                {paymentMethod === 'cash' ? '現金' : 'LINE Pay'}
+                {paymentMethod === 'cash' ? '現金' : paymentMethod === 'line_pay' ? 'LINE Pay' : '💰 錢包'}
               </div>
               <div className='total-amount'>
                 {discountNum > 0 ? (

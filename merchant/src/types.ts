@@ -39,7 +39,7 @@ export interface OrderItem {
   doubleShot?: boolean;
 }
 
-export type PaymentMethod = 'cash' | 'line_pay';
+export type PaymentMethod = 'cash' | 'line_pay' | 'wallet';
 
 export interface Order {
   id?: string;

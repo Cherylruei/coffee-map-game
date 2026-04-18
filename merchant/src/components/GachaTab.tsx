@@ -9,7 +9,7 @@ interface Props {
   onGenerated: () => void;
 }
 
-type GachaSubTab = 'qr' | 'share-tokens';
+type GachaSubTab = 'qr' | 'share-tokens' | 'topup';
 
 interface UserInfo {
   id: string;
@@ -28,7 +28,7 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const qrSize = Math.min(220, Math.floor(window.innerWidth * 0.62));
+  const qrSize = 200;
 
   // Share tokens state
   const [lineId, setLineId] = useState('');
@@ -36,6 +36,18 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
   const [loading, setLoading] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
   const [addAmount, setAddAmount] = useState(3);
+
+  // Topup QR state
+  const [topupAmount, setTopupAmount] = useState<number | ''>('');
+  const [topupQR, setTopupQR] = useState<{
+    code: string;
+    url: string;
+    amount: number;
+    expiresAt: string;
+  } | null>(null);
+  const [topupGenerating, setTopupGenerating] = useState(false);
+  const [topupMsg, setTopupMsg] = useState('');
+  const topupQrSize = 200;
 
   // Generate one QR on mount
   useEffect(() => {
@@ -170,53 +182,72 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
     setAddAmount(3);
   }
 
+  async function handleGenerateTopupQR() {
+    const amt = Number(topupAmount);
+    if (!amt || amt <= 0 || !Number.isInteger(amt)) {
+      setTopupMsg('❌ 請輸入有效金額（正整數）');
+      return;
+    }
+    setTopupGenerating(true);
+    setTopupMsg('');
+    setTopupQR(null);
+
+    const data = await api<{
+      success: boolean;
+      qrCode?: { code: string; url: string; amount: number; expiresAt: string };
+      message?: string;
+    }>('/api/admin/topup-qr/generate', sessionToken, {
+      method: 'POST',
+      body: JSON.stringify({ amount: amt }),
+    });
+    setTopupGenerating(false);
+
+    if (!data?.success || !data.qrCode) {
+      setTopupMsg(`❌ ${data?.message || '生成失敗'}`);
+      return;
+    }
+    setTopupQR(data.qrCode);
+    setTopupMsg(`✅ 儲值 QR 已生成（$${data.qrCode.amount}），30 分鐘內有效`);
+  }
+
   return (
     <div className='card'>
       {/* 內部 Tab 切換 */}
       <div
         style={{
           display: 'flex',
-          gap: '8px',
+          gap: '4px',
           marginBottom: '20px',
           borderBottom: '2px solid #eee',
           paddingBottom: '0',
         }}
       >
-        <button
-          onClick={() => setSubTab('qr')}
-          style={{
-            flex: 1,
-            padding: '12px 16px',
-            background: subTab === 'qr' ? '#667eea' : 'transparent',
-            color: subTab === 'qr' ? 'white' : '#666',
-            border: 'none',
-            borderBottom: subTab === 'qr' ? '3px solid #667eea' : 'none',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: '14px',
-            transition: 'all 0.2s',
-          }}
-        >
-          🎴 抽卡 QR Code
-        </button>
-        <button
-          onClick={() => setSubTab('share-tokens')}
-          style={{
-            flex: 1,
-            padding: '12px 16px',
-            background: subTab === 'share-tokens' ? '#667eea' : 'transparent',
-            color: subTab === 'share-tokens' ? 'white' : '#666',
-            border: 'none',
-            borderBottom:
-              subTab === 'share-tokens' ? '3px solid #667eea' : 'none',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: '14px',
-            transition: 'all 0.2s',
-          }}
-        >
-          🎫 分享次數
-        </button>
+        {(
+          [
+            { key: 'topup', label: '💰 儲值' },
+            { key: 'qr', label: '🎴 抽卡 QR' },
+            { key: 'share-tokens', label: '🎫 分享次數' },
+          ] as { key: GachaSubTab; label: string }[]
+        ).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setSubTab(key)}
+            style={{
+              flex: 1,
+              padding: '10px 8px',
+              background: subTab === key ? '#667eea' : 'transparent',
+              color: subTab === key ? 'white' : '#666',
+              border: 'none',
+              borderBottom: subTab === key ? '3px solid #667eea' : 'none',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '13px',
+              transition: 'all 0.2s',
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* QR Code 頁面 */}
@@ -399,6 +430,140 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
               }}
             >
               輸入 LINE ID 並點擊「查詢」開始
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 儲值 QR Code 頁面 */}
+      {subTab === 'topup' && (
+        <div>
+          <p style={{ fontSize: '13px', color: '#666', marginBottom: '16px' }}>
+            輸入儲值金額，生成一次性 QR Code（30 分鐘有效）。
+            <br />
+            顧客掃描後自動入帳到錢包。
+          </p>
+
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <span
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#666',
+                  fontWeight: 'bold',
+                }}
+              >
+                $
+              </span>
+              <input
+                type='number'
+                min='1'
+                placeholder='輸入金額（元）'
+                value={topupAmount}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setTopupAmount(v === '' ? '' : Math.max(1, parseInt(v) || 1));
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleGenerateTopupQR()}
+                style={{
+                  width: '100%',
+                  padding: '12px 12px 12px 28px',
+                  borderRadius: '8px',
+                  border: '1px solid #ddd',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            <button
+              onClick={handleGenerateTopupQR}
+              disabled={topupGenerating || !topupAmount}
+              style={{
+                padding: '12px 20px',
+                background: topupAmount ? '#4caf50' : '#ccc',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: topupAmount ? 'pointer' : 'not-allowed',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {topupGenerating ? '生成中…' : '生成 QR'}
+            </button>
+          </div>
+
+          {topupMsg && (
+            <div
+              style={{
+                padding: '10px 14px',
+                marginBottom: '16px',
+                background: topupMsg.includes('❌') ? '#fee' : '#efe',
+                borderRadius: '8px',
+                fontSize: '13px',
+                color: topupMsg.includes('❌') ? '#d32f2f' : '#2e7d32',
+              }}
+            >
+              {topupMsg}
+            </div>
+          )}
+
+          {topupQR && (
+            <div style={{ textAlign: 'center' }}>
+              <div
+                style={{
+                  display: 'inline-block',
+                  padding: '16px',
+                  background: 'white',
+                  borderRadius: '12px',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
+                  marginBottom: '12px',
+                }}
+              >
+                <QRCodeCanvas value={topupQR.url} size={topupQrSize} />
+              </div>
+              <div
+                style={{
+                  fontSize: '24px',
+                  fontWeight: 'bold',
+                  color: '#4caf50',
+                  marginBottom: '4px',
+                }}
+              >
+                儲值 ${topupQR.amount} 元
+              </div>
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: '#999',
+                  marginBottom: '16px',
+                }}
+              >
+                代碼：{topupQR.code}
+              </div>
+              <button
+                onClick={() => {
+                  setTopupQR(null);
+                  setTopupMsg('');
+                  setTopupAmount('');
+                }}
+                style={{
+                  padding: '10px 24px',
+                  background: '#667eea',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                ＋ 生成新的儲值 QR
+              </button>
             </div>
           )}
         </div>
