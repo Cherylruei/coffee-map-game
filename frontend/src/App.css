@@ -59,13 +59,16 @@ body {
 .game-screen p {
   font-size: clamp(14px, 3.5vw, 16px);
   color: #666;
-  margin-bottom: 36px;
+  margin-bottom: 15px;
   line-height: 1.5;
 }
 
 /* ── Buttons ──────────────────────────────── */
 .scan-button,
 .cancel-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
@@ -102,17 +105,52 @@ body {
   gap: 12px;
   width: 100%;
   font-size: 20px;
-  height: 176px; /* 3 × 50px + 2 × 12px gap = 174px, 略留餘量 */
 }
 
 .action-buttons > button {
   height: 50px;
 }
 
+/* ── Wallet Balance chip ─────────────────── */
+.wallet-balance-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 280px;
+  padding: 10px 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.1) 0%,
+    rgba(118, 75, 162, 0.1) 100%
+  );
+  border: 1.5px solid rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  margin-top: 4px;
+}
+
+.wallet-balance-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #667eea;
+  letter-spacing: 0.3px;
+}
+
+.wallet-balance-amount {
+  font-size: 15px;
+  font-weight: 700;
+  color: #764ba2;
+  background: rgba(118, 75, 162, 0.1);
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
 .menu-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: rgba(102, 126, 234, 0.08);
   color: #667eea;
-  border: 2px solid #667eea;
   border-radius: 12px;
   font-weight: 600;
   cursor: pointer;

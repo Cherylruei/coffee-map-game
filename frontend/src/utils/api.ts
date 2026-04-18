@@ -58,3 +58,12 @@ export const shareAPI = {
     claim: (shareCode: string) => api.post('/share/claim', { shareCode }),
     cancel: (cardId: number) => api.post('/share/cancel', { cardId }),
 };
+
+export const walletAPI = {
+    getBalance: () => api.get('/wallet/balance'),
+    topup: (code: string) => api.post('/wallet/topup', { code }),
+};
+
+export const qrcodeAPI = {
+    getInfo: (code: string) => api.get('/qrcode/info', { params: { code } }),
+};

@@ -7,10 +7,29 @@ import { TreasureBox } from './components/Collection/TreasureBox';
 import { ShareButton } from './components/Share/ShareButton';
 import { FloatingSidebar } from './components/FloatingSidebar/FloatingSidebar';
 import { MenuOverlay } from './components/MenuOverlay/MenuOverlay';
+import { WalletPaymentModal } from './components/Wallet/WalletPaymentModal';
+import { WalletBalance } from './components/Wallet/WalletBalance';
 import { useAuthStore } from './hooks/useAuth';
 import { useCollectionStore } from './hooks/useCollection';
-import { authAPI, userAPI, gachaAPI, shareAPI } from './utils/api';
-import { trackLoginSuccess, trackQRScan, trackGachaDraw, trackPageView, trackSignUp, trackShareCardClaimed } from './utils/analytics';
+import { useWalletStore } from './hooks/useWallet';
+import {
+  authAPI,
+  userAPI,
+  gachaAPI,
+  shareAPI,
+  walletAPI,
+  qrcodeAPI,
+} from './utils/api';
+import type { QRCodeInfo } from './types';
+import {
+  trackLoginSuccess,
+  trackQRScan,
+  trackGachaDraw,
+  trackPageView,
+  trackSignUp,
+  trackShareCardClaimed,
+  trackWalletTopup,
+} from './utils/analytics';
 import './App.css';
 
 // 模組層級變數，StrictMode 的 unmount/remount 不會重置
@@ -42,8 +61,20 @@ function App() {
   const [lastCardId, setLastCardId] = useState<number | null>(null);
   const [showNoChancesModal, setShowNoChancesModal] = useState(false);
   const [drawingInProgress, setDrawingInProgress] = useState(false);
+  // 錢包付款確認彈窗
+  const [walletPaymentPending, setWalletPaymentPending] = useState<{
+    code: string;
+    amount: number;
+  } | null>(null);
+  const [walletPaymentLoading, setWalletPaymentLoading] = useState(false);
   // 記錄抽卡前的收藏數，判斷是否為第一張
   const collectionCountRef = useRef(0);
+
+  const {
+    balance: walletBalance,
+    fetchBalance,
+    setBalance: setWalletBalance,
+  } = useWalletStore();
 
   const loadCollection = async () => {
     try {
@@ -71,7 +102,8 @@ function App() {
         alert(`🎉 ${response.data.message}`);
       }
     } catch (error) {
-      const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+      const msg = (error as { response?: { data?: { message?: string } } })
+        .response?.data?.message;
       alert(msg || '兌換失敗，請稍後再試');
     }
   };
@@ -95,6 +127,7 @@ function App() {
       // 若不是 LINE callback 流程，才在此載入（callback 流程由下方 useEffect 處理）
       if (!code) {
         loadCollection().then(redeemPendingQR);
+        fetchBalance();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,6 +153,7 @@ function App() {
             trackLoginSuccess('LINE');
             await loadCollection();
             await redeemPendingQR();
+            fetchBalance();
           }
         } catch (error) {
           console.error('LINE Login 失敗:', error);
@@ -148,41 +182,108 @@ function App() {
     }
   }, [isAuthenticated]);
 
-  // QR Code 掃描成功處理 — 兌換為抽卡次數
-  const handleQRScan = async (rawQR: string) => {
-    // 防止重複掃描
-    if (qrCodeProcessing) {
-      console.log('掃描進行中，忽略此次掃描');
-      return;
+  // 解析 rawQR → 代碼字串（支援完整 URL 或純代碼）
+  function extractQRCode(rawQR: string): string {
+    try {
+      const url = new URL(rawQR);
+      return url.searchParams.get('qr') || rawQR;
+    } catch {
+      return rawQR;
     }
+  }
+
+  // 執行抽卡 QR 兌換（含錢包扣款），供掃描與確認彈窗共用
+  const redeemGachaQR = async (qrCode: string) => {
+    const response = await gachaAPI.pull(qrCode);
+    if (response.data.success) {
+      trackQRScan('success');
+      setDrawChances(response.data.drawChances);
+      if (
+        response.data.newWalletBalance !== null &&
+        response.data.newWalletBalance !== undefined
+      ) {
+        setWalletBalance(response.data.newWalletBalance);
+      }
+      setShowScanner(false);
+      alert(`🎉 ${response.data.message}`);
+    }
+  };
+
+  // QR Code 掃描成功處理 — 依 QR 類型分流
+  const handleQRScan = async (rawQR: string) => {
+    if (qrCodeProcessing) return;
     qrCodeProcessing = true;
 
+    const qrCode = extractQRCode(rawQR);
+    let openedModal = false; // 本地旗標，避免 React state 非同步導致誤判
+
     try {
-      // 支援掃到完整 URL（如 https://xxx/?qr=COFFEE-XXXX）或直接是代碼
-      let qrCode = rawQR;
-      try {
-        const url = new URL(rawQR);
-        const param = url.searchParams.get('qr');
-        if (param) qrCode = param;
-      } catch {
-        // rawQR 本身就是代碼，直接使用
+      // 1. 先查詢 QR 資訊（不標記已使用）
+      const infoRes = await qrcodeAPI.getInfo(qrCode);
+      const info = infoRes.data as QRCodeInfo & {
+        success: boolean;
+        message?: string;
+      };
+
+      if (!info?.success) {
+        alert(info?.message || 'QR Code 無效或已過期');
+        return;
       }
 
-      const response = await gachaAPI.pull(qrCode);
-
-      if (response.data.success) {
-        trackQRScan('success');
-        setDrawChances(response.data.drawChances);
-        setShowScanner(false);
-        alert(`🎉 ${response.data.message}`);
+      // 2. 儲值 QR（TOPUP-）→ 自動入帳
+      if (info.type === 'topup') {
+        const topupRes = await walletAPI.topup(qrCode);
+        if (topupRes.data?.success) {
+          setWalletBalance(topupRes.data.newBalance);
+          trackWalletTopup(topupRes.data.amount);
+          setShowScanner(false);
+          alert(`💰 ${topupRes.data.message}`);
+        } else {
+          alert(topupRes.data?.message || '儲值失敗');
+        }
+        return;
       }
+
+      // 3. 點單 QR + 錢包付款 → 顯示確認彈窗
+      if (info.type === 'gacha' && (info.walletAmount ?? 0) > 0) {
+        await fetchBalance(); // 確保餘額最新
+        setWalletPaymentPending({ code: qrCode, amount: info.walletAmount! });
+        openedModal = true;
+        return; // 等待用戶在彈窗確認，qrCodeProcessing 由 handleWalletConfirm/Cancel 解鎖
+      }
+
+      // 4. 一般點單 QR → 現有流程
+      await redeemGachaQR(qrCode);
     } catch (error: any) {
       trackQRScan('error');
-      console.error('兌換失敗:', error);
-      alert(error.response?.data?.message || '兌換失敗，請稍後再試');
+      const msg = error.response?.data?.message || '兌換失敗，請稍後再試';
+      alert(msg);
     } finally {
+      // 開啟彈窗時保持鎖定，其餘情況皆解鎖
+      if (!openedModal) qrCodeProcessing = false;
+    }
+  };
+
+  // 用戶在確認彈窗點「確認付款」
+  const handleWalletConfirm = async () => {
+    if (!walletPaymentPending) return;
+    setWalletPaymentLoading(true);
+    try {
+      await redeemGachaQR(walletPaymentPending.code);
+    } catch (error: any) {
+      trackQRScan('error');
+      alert(error.response?.data?.message || '付款失敗，請稍後再試');
+    } finally {
+      setWalletPaymentLoading(false);
+      setWalletPaymentPending(null);
       qrCodeProcessing = false;
     }
+  };
+
+  // 用戶取消付款確認
+  const handleWalletCancel = () => {
+    setWalletPaymentPending(null);
+    qrCodeProcessing = false;
   };
 
   // 使用抽卡次數抽卡
@@ -252,15 +353,14 @@ function App() {
         ) : (
           <div className='game-screen'>
             <h1>☕ 咖啡地圖</h1>
-            <p>掃描 QR Code 開始收集咖啡卡片！</p>
-
+            <p>掃描 QR Code，收集世界咖啡產地卡片！</p>
             {!showScanner ? (
               <div className='action-buttons'>
                 <button
                   onClick={() => setShowScanner(true)}
                   className='scan-button'
                 >
-                  📱 掃描 QR Code
+                  掃描 QR Code
                 </button>
 
                 {/* 抽卡按鈕（含次數） */}
@@ -270,7 +370,7 @@ function App() {
                   disabled={drawingInProgress}
                 >
                   <span className='draw-button-label'>
-                    {drawingInProgress ? '⏳ 抽卡中...' : '🎴 抽卡'}
+                    {drawingInProgress ? '⏳ 抽卡中...' : ' 抽卡'}
                   </span>
                   <span className='draw-button-count'>× {drawChances} 次</span>
                 </button>
@@ -281,6 +381,9 @@ function App() {
                 >
                   📋 查看菜單
                 </button>
+
+                {/* 咖啡儲值金 — 對齊按鈕列底部 */}
+                <WalletBalance />
               </div>
             ) : (
               <div className='scanner-container'>
@@ -358,6 +461,17 @@ function App() {
 
       {/* 菜單瀏覽 */}
       <MenuOverlay isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
+
+      {/* 錢包付款確認彈窗 */}
+      {walletPaymentPending && (
+        <WalletPaymentModal
+          amount={walletPaymentPending.amount}
+          currentBalance={walletBalance}
+          onConfirm={handleWalletConfirm}
+          onCancel={handleWalletCancel}
+          loading={walletPaymentLoading}
+        />
+      )}
     </div>
   );
 }

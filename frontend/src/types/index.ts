@@ -49,3 +49,24 @@ export interface QRCode {
     expiresAt: string;
     createdAt: string;
 }
+
+export interface WalletTransaction {
+    id: string;
+    amount: number;
+    type: 'topup' | 'deduct';
+    note: string;
+    orderRef: string;
+    createdAt: string;
+}
+
+export interface WalletInfo {
+    balance: number;
+    transactions: WalletTransaction[];
+}
+
+export interface QRCodeInfo {
+    type: 'topup' | 'gacha';
+    amount?: number;       // topup 時有值
+    cupCount?: number;     // gacha 時有值
+    walletAmount?: number; // gacha + 錢包付款時有值
+}

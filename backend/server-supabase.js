@@ -9,6 +9,7 @@ axios.defaults.adapter = 'http';
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('cross-fetch');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,9 +29,45 @@ const CONFIG = {
     process.env.LINE_CHANNEL_SECRET || 'YOUR_LINE_CHANNEL_SECRET',
 };
 
+// JWT_SECRET 強度檢查（啟動時警告）
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-secret-key-change-this') {
+  console.warn('[SECURITY] JWT_SECRET 使用預設值，正式環境請設定強隨機字串！');
+}
+
 // ADMIN_TOKEN 移到最上面，所有路由都能用到
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin-secret-token';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+// ─── Rate Limiters（防暴力重試與濫用）───────────────────────
+// 每個用戶每分鐘最多 5 次儲值（QR code 本來就是一次性，此為額外保護）
+const walletTopupLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.user?.userId || req.ip,
+  message: { success: false, message: '請求過於頻繁，請稍後再試' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 每個用戶每分鐘最多 10 次 QR 兌換
+const gachaPullLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => req.user?.userId || req.ip,
+  message: { success: false, message: '請求過於頻繁，請稍後再試' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 每個用戶每分鐘最多 30 次抽卡（一次最多就這樣）
+const gachaDrawLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => req.user?.userId || req.ip,
+  message: { success: false, message: '請求過於頻繁，請稍後再試' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // 允許的來源：環境變數 ALLOWED_ORIGINS 以逗號分隔，預設包含本地開發與正式環境
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
@@ -266,59 +303,49 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
   }
 });
 
-// 3. 兌換 QR Code → 累加抽卡次數（不直接抽卡）
-app.post('/api/gacha/pull', authenticateToken, async (req, res) => {
+// 3. 兌換 QR Code → 累加抽卡次數（atomic RPC，防 race condition）
+app.post('/api/gacha/pull', authenticateToken, gachaPullLimiter, async (req, res) => {
   try {
     const { qrCode } = req.body;
+    if (!qrCode || typeof qrCode !== 'string') {
+      return res.status(400).json({ success: false, message: 'QR Code 格式錯誤' });
+    }
 
-    const { data: qrData } = await supabase
-      .from('qr_codes')
-      .select('*')
-      .eq('code', qrCode)
-      .single();
+    // 全部操作在一個 Postgres transaction 內完成（FOR UPDATE 防 race condition）
+    const { data: result, error } = await supabase.rpc('claim_order_qr', {
+      p_user_id: req.user.userId,
+      p_code: qrCode,
+    });
+    if (error) throw error;
 
-    if (!qrData)
-      return res.status(400).json({ success: false, message: 'QR Code 無效' });
-    if (qrData.used)
-      return res
-        .status(400)
-        .json({ success: false, message: 'QR Code 已被使用' });
-    if (new Date(qrData.expires_at) < new Date())
-      return res
-        .status(400)
-        .json({ success: false, message: 'QR Code 已過期' });
+    if (!result.success) {
+      const msgMap = {
+        qr_not_found:       'QR Code 無效',
+        qr_already_used:    'QR Code 已被使用',
+        qr_expired:         'QR Code 已過期',
+        wallet_not_found:   '尚未建立錢包，請先儲值',
+        insufficient_balance: `餘額不足（目前 $${result.balance}，需 $${result.required}）`,
+      };
+      const status = result.error === 'insufficient_balance' ? 402 : 400;
+      return res.status(status).json({
+        success: false,
+        message: msgMap[result.error] || '兌換失敗',
+        balance: result.balance ?? 0,
+        required: result.required ?? 0,
+      });
+    }
 
-    const cupCount = qrData.cup_count || 1;
-
-    // 累加用戶的抽卡次數
-    const { data: user } = await supabase
-      .from('users')
-      .select('draw_chances')
-      .eq('id', req.user.userId)
-      .single();
-
-    const newDrawChances = (user?.draw_chances || 0) + cupCount;
-
-    await supabase
-      .from('users')
-      .update({ draw_chances: newDrawChances })
-      .eq('id', req.user.userId);
-
-    // 標記 QR Code 為已使用
-    await supabase
-      .from('qr_codes')
-      .update({
-        used: true,
-        used_by: req.user.userId,
-        used_at: new Date().toISOString(),
-      })
-      .eq('code', qrCode);
+    const message = result.wallet_amount > 0
+      ? `已扣款 $${result.wallet_amount}，獲得 ${result.cup_count} 次抽卡機會！`
+      : `已獲得 ${result.cup_count} 次抽卡機會！`;
 
     res.json({
       success: true,
-      message: `已獲得 ${cupCount} 次抽卡機會！`,
-      drawChances: newDrawChances,
-      addedChances: cupCount,
+      message,
+      drawChances:    result.draw_chances,
+      addedChances:   result.cup_count,
+      walletDeducted: result.wallet_amount,
+      newWalletBalance: result.new_balance ?? null,
     });
   } catch (error) {
     console.error('QR redeem error:', error);
@@ -326,17 +353,20 @@ app.post('/api/gacha/pull', authenticateToken, async (req, res) => {
   }
 });
 
-// 3.5. 使用抽卡次數抽卡（draw_chances > 0 時可用）
-app.post('/api/gacha/draw', authenticateToken, async (req, res) => {
+// 3.5. 使用抽卡次數抽卡（atomic RPC，防 draw_chances 超用）
+app.post('/api/gacha/draw', authenticateToken, gachaDrawLimiter, async (req, res) => {
   try {
-    // 檢查抽卡次數
-    const { data: user } = await supabase
-      .from('users')
-      .select('draw_chances')
-      .eq('id', req.user.userId)
-      .single();
+    // 抽卡結果在 JS 端決定（確保亂數邏輯在伺服器，用戶無法影響）
+    const cardId = pullCard();
 
-    if (!user || (user.draw_chances || 0) <= 0) {
+    // 扣次數 + 寫收藏 + 寫歷史：全在一個 Postgres transaction
+    const { data: result, error } = await supabase.rpc('perform_draw', {
+      p_user_id: req.user.userId,
+      p_card_id: cardId,
+    });
+    if (error) throw error;
+
+    if (!result.success) {
       return res.status(400).json({
         success: false,
         message: '抽卡次數不足，去咖啡社買杯咖啡增加抽獎次數哦！',
@@ -344,45 +374,7 @@ app.post('/api/gacha/draw', authenticateToken, async (req, res) => {
       });
     }
 
-    // 扣減抽卡次數
-    const newDrawChances = user.draw_chances - 1;
-    await supabase
-      .from('users')
-      .update({ draw_chances: newDrawChances })
-      .eq('id', req.user.userId);
-
-    // 執行抽卡
-    const cardId = pullCard();
-
-    const { data: existingCard } = await supabase
-      .from('collection')
-      .select('count')
-      .eq('user_id', req.user.userId)
-      .eq('card_id', cardId)
-      .single();
-
-    const isNew = !existingCard;
-
-    if (existingCard) {
-      await supabase
-        .from('collection')
-        .update({ count: existingCard.count + 1 })
-        .eq('user_id', req.user.userId)
-        .eq('card_id', cardId);
-    } else {
-      await supabase
-        .from('collection')
-        .insert({ user_id: req.user.userId, card_id: cardId, count: 1 });
-    }
-
-    // 記錄抽卡歷史
-    await supabase.from('gacha_history').insert({
-      user_id: req.user.userId,
-      card_id: cardId,
-      qr_code: null,
-      is_new: isNew,
-    });
-
+    // 讀取最新收藏（只需一次查詢）
     const { data: updatedCollections } = await supabase
       .from('collection')
       .select('card_id, count')
@@ -395,10 +387,10 @@ app.post('/api/gacha/draw', authenticateToken, async (req, res) => {
 
     res.json({
       success: true,
-      card: { id: cardId },
-      isNew,
+      card: { id: result.card_id },
+      isNew: result.is_new,
       collection,
-      drawChances: newDrawChances,
+      drawChances: result.new_chances,
     });
   } catch (error) {
     console.error('Gacha draw error:', error);
@@ -645,22 +637,26 @@ app.post('/api/share/cancel', authenticateToken, async (req, res) => {
 // ===== 店家後台 API =====
 
 // 6. 生成抽卡 QR Code（1 張 QR Code，含杯數資訊）
+// walletAmount: 選填，當付款方式為錢包時帶入應扣金額
 app.post('/api/admin/qrcode/generate', authenticateAdmin, async (req, res) => {
   try {
-    const { cupCount = 1, expiresInDays = 30 } = req.body;
+    const { cupCount = 1, expiresInDays = 30, walletAmount } = req.body;
     const expiresAt = new Date(
       Date.now() + expiresInDays * 24 * 60 * 60 * 1000,
     );
 
     const code = `COFFEE-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
-    await supabase
-      .from('qr_codes')
-      .insert({ code, cup_count: cupCount, expires_at: expiresAt.toISOString() });
+    const insertData = { code, cup_count: cupCount, expires_at: expiresAt.toISOString() };
+    if (walletAmount && walletAmount > 0) {
+      insertData.wallet_amount = walletAmount;
+    }
+    await supabase.from('qr_codes').insert(insertData);
 
     const qrCode = {
       code,
       url: `${FRONTEND_URL}/?qr=${code}`,
       cupCount,
+      walletAmount: walletAmount || null,
     };
 
     res.json({ success: true, qrCode });
@@ -1187,6 +1183,153 @@ app.get('/api/admin/users/share-tokens', authenticateAdmin, async (req, res) => 
     });
   } catch (error) {
     console.error('Get share tokens error:', error);
+    res.status(500).json({ success: false, message: '查詢失敗' });
+  }
+});
+
+// ===== 錢包 / 儲值 API =====
+
+// W1. 管理員生成儲值 QR Code（TOPUP- 前綴，一次性，30 分鐘有效）
+app.post('/api/admin/topup-qr/generate', authenticateAdmin, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount || !Number.isInteger(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, message: '金額必須為正整數' });
+    }
+
+    const code = `TOPUP-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 分鐘
+
+    const { error } = await supabase.from('topup_qr_codes').insert({
+      code,
+      amount,
+      expires_at: expiresAt.toISOString(),
+    });
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      qrCode: {
+        code,
+        url: `${FRONTEND_URL}/?qr=${code}`,
+        amount,
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Topup QR generate error:', error);
+    res.status(500).json({ success: false, message: '生成儲值 QR 失敗' });
+  }
+});
+
+// W2. 用戶掃描儲值 QR → 自動入帳（atomic RPC，防 race condition）
+app.post('/api/wallet/topup', authenticateToken, walletTopupLimiter, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code || typeof code !== 'string' || !code.startsWith('TOPUP-')) {
+      return res.status(400).json({ success: false, message: '無效的儲值代碼' });
+    }
+
+    // 全部操作在一個 Postgres transaction（FOR UPDATE 防雙重使用）
+    const { data: result, error } = await supabase.rpc('topup_wallet', {
+      p_user_id: req.user.userId,
+      p_code: code,
+    });
+    if (error) throw error;
+
+    if (!result.success) {
+      const msgMap = {
+        qr_not_found:    '儲值代碼不存在',
+        qr_already_used: '此儲值代碼已使用',
+        qr_expired:      '儲值代碼已過期',
+      };
+      return res.status(400).json({
+        success: false,
+        message: msgMap[result.error] || '儲值失敗',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `成功儲值 $${result.amount}！`,
+      amount: result.amount,
+      newBalance: result.new_balance,
+    });
+  } catch (error) {
+    console.error('Wallet topup error:', error);
+    res.status(500).json({ success: false, message: '儲值失敗' });
+  }
+});
+
+// W3. 用戶查詢錢包餘額 + 最近 20 筆交易
+app.get('/api/wallet/balance', authenticateToken, async (req, res) => {
+  try {
+    const [walletResult, txResult] = await Promise.all([
+      supabase.from('wallets').select('balance').eq('user_id', req.user.userId).single(),
+      supabase
+        .from('wallet_transactions')
+        .select('id, amount, type, note, order_ref, created_at')
+        .eq('user_id', req.user.userId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+    ]);
+
+    res.json({
+      success: true,
+      balance: walletResult.data?.balance ?? 0,
+      transactions: txResult.data || [],
+    });
+  } catch (error) {
+    console.error('Wallet balance error:', error);
+    res.status(500).json({ success: false, message: '查詢餘額失敗' });
+  }
+});
+
+// W4. 預覽 QR Code 資訊（不標記為已使用，用於前台顯示確認彈窗）
+app.get('/api/qrcode/info', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) {
+      return res.status(400).json({ success: false, message: '缺少 code 參數' });
+    }
+
+    // 儲值 QR
+    if (code.startsWith('TOPUP-')) {
+      const { data: qr } = await supabase
+        .from('topup_qr_codes')
+        .select('amount, used, expires_at')
+        .eq('code', code)
+        .single();
+
+      if (!qr) return res.status(404).json({ success: false, message: '代碼不存在' });
+      if (qr.used) return res.status(400).json({ success: false, message: '已使用' });
+      if (new Date(qr.expires_at) < new Date()) {
+        return res.status(400).json({ success: false, message: '已過期' });
+      }
+      return res.json({ success: true, type: 'topup', amount: qr.amount });
+    }
+
+    // 點單 QR（含 wallet_amount 時需確認付款）
+    const { data: qr } = await supabase
+      .from('qr_codes')
+      .select('cup_count, wallet_amount, used, expires_at')
+      .eq('code', code)
+      .single();
+
+    if (!qr) return res.status(404).json({ success: false, message: '代碼不存在' });
+    if (qr.used) return res.status(400).json({ success: false, message: '已使用' });
+    if (new Date(qr.expires_at) < new Date()) {
+      return res.status(400).json({ success: false, message: '已過期' });
+    }
+
+    return res.json({
+      success: true,
+      type: 'gacha',
+      cupCount: qr.cup_count || 1,
+      walletAmount: qr.wallet_amount || 0,
+    });
+  } catch (error) {
+    console.error('QR info error:', error);
     res.status(500).json({ success: false, message: '查詢失敗' });
   }
 });

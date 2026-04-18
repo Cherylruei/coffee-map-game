@@ -67,3 +67,8 @@ export function trackSignUp(method: string): void {
 export function trackShareCardClaimed(cardId: number, isNewCard: boolean): void {
   safeGtag('share_card_claimed', { card_id: cardId, is_new_card: isNewCard })
 }
+
+// 現金儲值成功
+export function trackWalletTopup(amount: number): void {
+  safeGtag('topup_complete', { amount })
+}

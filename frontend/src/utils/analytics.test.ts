@@ -7,6 +7,7 @@ import {
   trackGachaDraw,
   trackSignUp,
   trackShareCardClaimed,
+  trackWalletTopup,
 } from './analytics'
 
 describe('analytics', () => {
@@ -166,6 +167,23 @@ describe('analytics', () => {
 
     it('does not throw when gtag is not loaded', () => {
       expect(() => trackShareCardClaimed(1, false)).not.toThrow()
+    })
+  })
+
+  describe('trackWalletTopup', () => {
+    it('calls gtag with topup_complete event and amount', () => {
+      const mockGtag = vi.fn()
+      vi.stubGlobal('gtag', mockGtag)
+
+      trackWalletTopup(150)
+
+      expect(mockGtag).toHaveBeenCalledWith('event', 'topup_complete', {
+        amount: 150,
+      })
+    })
+
+    it('does not throw when gtag is not loaded', () => {
+      expect(() => trackWalletTopup(100)).not.toThrow()
     })
   })
 })
