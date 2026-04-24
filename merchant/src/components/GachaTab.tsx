@@ -19,7 +19,7 @@ interface UserInfo {
 }
 
 export function GachaTab({ sessionToken, onGenerated }: Props) {
-  const [subTab, setSubTab] = useState<GachaSubTab>('qr');
+  const [subTab, setSubTab] = useState<GachaSubTab>('topup');
 
   // QR Code state
   const [currentQR, setCurrentQR] = useState<QRCodeItem | null>(null);
@@ -38,6 +38,7 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
   const [addAmount, setAddAmount] = useState(3);
 
   // Topup QR state
+  const [topupPaymentMethod, setTopupPaymentMethod] = useState<'cash' | 'line'>('cash');
   const [topupAmount, setTopupAmount] = useState<number | ''>('');
   const [topupQR, setTopupQR] = useState<{
     code: string;
@@ -198,7 +199,7 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
       message?: string;
     }>('/api/admin/topup-qr/generate', sessionToken, {
       method: 'POST',
-      body: JSON.stringify({ amount: amt }),
+      body: JSON.stringify({ amount: amt, paymentMethod: topupPaymentMethod }),
     });
     setTopupGenerating(false);
 
@@ -444,6 +445,44 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
             顧客掃描後自動入帳到錢包。
           </p>
 
+          {/* 付款方式 */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <button
+              onClick={() => setTopupPaymentMethod('cash')}
+              style={{
+                flex: 1,
+                padding: '10px',
+                background: topupPaymentMethod === 'cash' ? '#4caf50' : '#f0f0f0',
+                color: topupPaymentMethod === 'cash' ? 'white' : '#555',
+                border: '2px solid',
+                borderColor: topupPaymentMethod === 'cash' ? '#4caf50' : '#ddd',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '14px',
+              }}
+            >
+              💵 現金
+            </button>
+            <button
+              onClick={() => setTopupPaymentMethod('line')}
+              style={{
+                flex: 1,
+                padding: '10px',
+                background: topupPaymentMethod === 'line' ? '#00b900' : '#f0f0f0',
+                color: topupPaymentMethod === 'line' ? 'white' : '#555',
+                border: '2px solid',
+                borderColor: topupPaymentMethod === 'line' ? '#00b900' : '#ddd',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '14px',
+              }}
+            >
+              💚 LINE Pay
+            </button>
+          </div>
+
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
             <div style={{ position: 'relative', flex: 1 }}>
               <span
@@ -537,6 +576,9 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
               >
                 儲值 ${topupQR.amount} 元
               </div>
+              <div style={{ fontSize: '13px', color: '#666', marginBottom: '4px' }}>
+                付款方式：{topupPaymentMethod === 'line' ? '💚 LINE Pay' : '💵 現金'}
+              </div>
               <div
                 style={{
                   fontSize: '12px',
@@ -551,6 +593,7 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
                   setTopupQR(null);
                   setTopupMsg('');
                   setTopupAmount('');
+                  setTopupPaymentMethod('cash');
                 }}
                 style={{
                   padding: '10px 24px',
