@@ -9,13 +9,16 @@ interface Props {
 }
 
 // 補貨建議計算（基於今日用量）
+const COFFEE_GRAMS_PER_BAG = 450;
+const MILK_ML_PER_BOTTLE = 1890;
+
 function calcSuggestion(usedGrams: number, usedMl: number) {
-  // 每包 500g、建議緩衝：ceil(used/400) 包
-  const coffeeBags = Math.max(1, Math.ceil(usedGrams / 400));
-  const coffeeGrams = coffeeBags * 500;
-  // 每瓶 900ml、建議緩衝：ceil(used/500) 瓶
-  const milkBottles = Math.max(1, Math.ceil(usedMl / 500));
-  const milkMl = milkBottles * 900;
+  // 每包 450g、建議緩衝：ceil(used/360) 包
+  const coffeeBags = Math.max(1, Math.ceil(usedGrams / 360));
+  const coffeeGrams = coffeeBags * COFFEE_GRAMS_PER_BAG;
+  // 每瓶 1890ml、建議緩衝：ceil(used/1500) 瓶
+  const milkBottles = Math.max(1, Math.ceil(usedMl / 1500));
+  const milkMl = milkBottles * MILK_ML_PER_BOTTLE;
   return { coffeeBags, coffeeGrams, milkBottles, milkMl };
 }
 
@@ -88,8 +91,8 @@ export function InventoryTab({
   const restockCoffeeGramsInput = parseInt(restockCoffeeGrams) || 0;
   const restockMilkInput = parseInt(restockMilkBottles) || 0;
   const restockMilkMlInput = parseInt(restockMilkMl) || 0;
-  const restockCoffeeTotalGrams = restockCoffeeInput * 500 + restockCoffeeGramsInput;
-  const restockMilkTotalMl = restockMilkInput * 900 + restockMilkMlInput;
+  const restockCoffeeTotalGrams = restockCoffeeInput * COFFEE_GRAMS_PER_BAG + restockCoffeeGramsInput;
+  const restockMilkTotalMl = restockMilkInput * MILK_ML_PER_BOTTLE + restockMilkMlInput;
   const hasRestockInput = restockCoffeeTotalGrams > 0 || restockMilkTotalMl > 0;
 
   // 計算今日用量（比對上次剩餘）
@@ -103,15 +106,15 @@ export function InventoryTab({
 
   if (lastInventory && (coffeeBeansInput > 0 || coffeeGramsInput > 0)) {
     const prevTotalGrams =
-      lastInventory.coffee_beans_bags * 500 + lastInventory.coffee_beans_grams;
-    const currTotalGrams = coffeeBeansInput * 500 + coffeeGramsInput;
+      lastInventory.coffee_beans_bags * COFFEE_GRAMS_PER_BAG + lastInventory.coffee_beans_grams;
+    const currTotalGrams = coffeeBeansInput * COFFEE_GRAMS_PER_BAG + coffeeGramsInput;
     coffeeUsedGrams = Math.max(0, prevTotalGrams - currTotalGrams);
   }
 
   if (lastInventory && (milkBottlesInput > 0 || milkMlInput > 0)) {
     const prevTotalMl =
-      lastInventory.milk_bottles * 900 + lastInventory.milk_ml;
-    const currTotalMl = milkBottlesInput * 900 + milkMlInput;
+      lastInventory.milk_bottles * MILK_ML_PER_BOTTLE + lastInventory.milk_ml;
+    const currTotalMl = milkBottlesInput * MILK_ML_PER_BOTTLE + milkMlInput;
     milkUsedMl = Math.max(0, prevTotalMl - currTotalMl);
   }
 
@@ -169,16 +172,16 @@ export function InventoryTab({
       const prevMilkBottles = lastInventory?.milk_bottles || 0;
       const prevMilkMl = lastInventory?.milk_ml || 0;
 
-      const prevTotalCoffee = prevBags * 500 + prevGrams;
-      const prevTotalMilk = prevMilkBottles * 900 + prevMilkMl;
+      const prevTotalCoffee = prevBags * COFFEE_GRAMS_PER_BAG + prevGrams;
+      const prevTotalMilk = prevMilkBottles * MILK_ML_PER_BOTTLE + prevMilkMl;
 
       const newTotalCoffee = prevTotalCoffee + restockCoffeeTotalGrams;
       const newTotalMilk = prevTotalMilk + restockMilkTotalMl;
 
-      const newCoffeeBags = Math.floor(newTotalCoffee / 500);
-      const newCoffeeGrams = newTotalCoffee % 500;
-      const newMilkBottles = Math.floor(newTotalMilk / 900);
-      const newMilkMl = newTotalMilk % 900;
+      const newCoffeeBags = Math.floor(newTotalCoffee / COFFEE_GRAMS_PER_BAG);
+      const newCoffeeGrams = newTotalCoffee % COFFEE_GRAMS_PER_BAG;
+      const newMilkBottles = Math.floor(newTotalMilk / MILK_ML_PER_BOTTLE);
+      const newMilkMl = newTotalMilk % MILK_ML_PER_BOTTLE;
 
       const result = await api<{ success: boolean }>(
         '/api/inventory/daily',
@@ -397,11 +400,11 @@ export function InventoryTab({
           <div className='inv-stock-summary'>
             <div className='inv-breakdown-row'>
               <span>☕ 咖啡豆總量</span>
-              <span>{lastInventory.coffee_beans_bags * 500 + lastInventory.coffee_beans_grams}g</span>
+              <span>{lastInventory.coffee_beans_bags} 包 {lastInventory.coffee_beans_grams > 0 ? `${lastInventory.coffee_beans_grams}克` : ''}（共 {lastInventory.coffee_beans_bags * COFFEE_GRAMS_PER_BAG + lastInventory.coffee_beans_grams}g）</span>
             </div>
             <div className='inv-breakdown-row'>
               <span>🥛 牛奶總量</span>
-              <span>{lastInventory.milk_bottles * 900 + lastInventory.milk_ml}ml</span>
+              <span>{lastInventory.milk_bottles} 瓶 {lastInventory.milk_ml > 0 ? `${lastInventory.milk_ml}ml` : ''}（共 {lastInventory.milk_bottles * MILK_ML_PER_BOTTLE + lastInventory.milk_ml}ml）</span>
             </div>
           </div>
         </div>
@@ -532,16 +535,17 @@ export function InventoryTab({
                 className='inv-input'
                 type='number'
                 min='0'
+                max='449'
                 placeholder='0'
                 value={coffeeGrams}
                 onChange={(e) => setCoffeeGrams(e.target.value)}
               />
-              <span className='inv-unit'>克</span>
+              <span className='inv-unit'>克（&lt;450）</span>
             </div>
           </div>
           {coffeeUsedGrams !== null && (
             <div className='inv-usage-hint'>
-              本日用量：約 {(coffeeUsedGrams / 500).toFixed(1)} 包（
+              本日用量：約 {(coffeeUsedGrams / COFFEE_GRAMS_PER_BAG).toFixed(1)} 包（
               {coffeeUsedGrams}g）
             </div>
           )}
@@ -567,16 +571,17 @@ export function InventoryTab({
                 className='inv-input'
                 type='number'
                 min='0'
+                max='1889'
                 placeholder='0'
                 value={milkMl}
                 onChange={(e) => setMilkMl(e.target.value)}
               />
-              <span className='inv-unit'>ml</span>
+              <span className='inv-unit'>ml（&lt;1890）</span>
             </div>
           </div>
           {milkUsedMl !== null && (
             <div className='inv-usage-hint'>
-              本日用量：約 {(milkUsedMl / 900).toFixed(1)} 瓶（{milkUsedMl}ml）
+              本日用量：約 {(milkUsedMl / MILK_ML_PER_BOTTLE).toFixed(1)} 瓶（{milkUsedMl}ml）
             </div>
           )}
         </div>

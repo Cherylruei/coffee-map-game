@@ -98,7 +98,7 @@ export function MenuOverlay({ isOpen, onClose }: Props) {
 
   useEffect(() => {
     if (!isOpen) return;
-    fetch(`${API_BASE}/menu`, { cache: 'no-store' })
+    fetch(`${API_BASE}/menu?t=${Date.now()}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         if (data.success && Array.isArray(data.categories)) {

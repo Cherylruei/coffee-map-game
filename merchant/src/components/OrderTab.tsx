@@ -15,6 +15,7 @@ interface Props {
   staffLineId: string | null;
   onOrderCommitted: () => void;
   onQRViewerChange?: (open: boolean) => void;
+  menuRefreshSignal?: number;
 }
 
 export function OrderTab({
@@ -23,6 +24,7 @@ export function OrderTab({
   staffLineId,
   onOrderCommitted,
   onQRViewerChange,
+  menuRefreshSignal,
 }: Props) {
   const [menuData, setMenuData] = useState<MenuData | null>(null);
   const [menuError, setMenuError] = useState(false);
@@ -43,7 +45,7 @@ export function OrderTab({
         else setMenuError(true);
       })
       .catch(() => setMenuError(true));
-  }, []);
+  }, [menuRefreshSignal]);
 
   function changeQty(itemId: string, delta: number) {
     setOrderItems((prev) => {
