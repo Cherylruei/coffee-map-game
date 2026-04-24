@@ -1,0 +1,206 @@
+.wtransfer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.wtransfer-box {
+  background: white;
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
+}
+
+.wtransfer-icon {
+  font-size: 40px;
+  margin-bottom: 8px;
+}
+
+.wtransfer-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: #333;
+}
+
+.wtransfer-subtitle {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: #888;
+}
+
+.wtransfer-balance-row {
+  display: flex;
+  justify-content: space-between;
+  background: #f8f9fa;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.wtransfer-balance-label {
+  color: #666;
+}
+
+.wtransfer-balance-value {
+  font-weight: bold;
+  color: #2e7d32;
+}
+
+.wtransfer-input-wrap {
+  display: flex;
+  align-items: center;
+  border: 2px solid #ddd;
+  border-radius: 12px;
+  padding: 0 14px;
+  margin-bottom: 12px;
+  transition: border-color 0.2s;
+}
+
+.wtransfer-input-wrap:focus-within {
+  border-color: #5c4033;
+}
+
+.wtransfer-currency {
+  font-size: 18px;
+  color: #555;
+  margin-right: 6px;
+}
+
+.wtransfer-input {
+ background-color: #ffffff;
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 22px;
+  font-weight: bold;
+  padding: 12px 0;
+  color: #333;
+  width: 100%;
+}
+
+/* Hide number input arrows */
+.wtransfer-input::-webkit-inner-spin-button,
+.wtransfer-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.wtransfer-input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.wtransfer-error {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #e53935;
+}
+
+.wtransfer-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.wtransfer-actions--bottom {
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.wtransfer-btn {
+  flex: 1;
+  padding: 13px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+
+.wtransfer-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wtransfer-btn--cancel {
+  background: #f5f5f5;
+  color: #666;
+  border: 2px solid #ddd;
+}
+
+.wtransfer-btn--confirm {
+  background: #5c4033;
+  color: white;
+}
+
+.wtransfer-btn--copy {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 2px solid #a5d6a7;
+}
+
+.wtransfer-btn--line {
+  background: #06c755;
+  color: white;
+}
+
+.wtransfer-share-btns {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.wtransfer-btn--cancel-transfer {
+  background: #fff3f3;
+  color: #c62828;
+  border: 2px solid #ffcdd2;
+  font-size: 13px;
+}
+
+.wtransfer-btn--close {
+  background: #5c4033;
+  color: white;
+}
+
+.wtransfer-success-msg {
+  font-size: 14px;
+  color: #333;
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+
+.wtransfer-url-box {
+  background: #f8f9fa;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  word-break: break-all;
+  font-size: 11px;
+  color: #555;
+  text-align: left;
+  border: 1px solid #e0e0e0;
+}
+
+.wtransfer-url-text {
+  font-family: monospace;
+}
+
+.wtransfer-expire {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: #888;
+}
+
+.wtransfer-loading {
+  padding: 32px 0;
+  font-size: 16px;
+  color: #666;
+}

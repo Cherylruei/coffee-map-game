@@ -9,7 +9,10 @@ import { FloatingSidebar } from './components/FloatingSidebar/FloatingSidebar';
 import { MenuOverlay } from './components/MenuOverlay/MenuOverlay';
 import { WalletPaymentModal } from './components/Wallet/WalletPaymentModal';
 import { WalletBalance } from './components/Wallet/WalletBalance';
+import { WalletTransferModal } from './components/Wallet/WalletTransferModal';
+import { WalletTransferClaimModal } from './components/Wallet/WalletTransferClaimModal';
 import { useAuthStore } from './hooks/useAuth';
+import { supabase } from './utils/supabase';
 import { useCollectionStore } from './hooks/useCollection';
 import { useWalletStore } from './hooks/useWallet';
 import {
@@ -20,6 +23,8 @@ import {
   walletAPI,
   qrcodeAPI,
 } from './utils/api';
+
+const PENDING_TRANSFER_KEY = 'pending_transfer_token';
 import type { QRCodeInfo } from './types';
 import {
   trackLoginSuccess,
@@ -39,7 +44,7 @@ let qrCodeProcessing = false;
 const PENDING_QR_KEY = 'pending_qr_code';
 
 function App() {
-  const { isAuthenticated, setAuth } = useAuthStore();
+  const { isAuthenticated, setAuth, user } = useAuthStore();
   const {
     collection,
     shareTokens,
@@ -67,6 +72,9 @@ function App() {
     amount: number;
   } | null>(null);
   const [walletPaymentLoading, setWalletPaymentLoading] = useState(false);
+  // 錢包轉帳彈窗
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [pendingClaimToken, setPendingClaimToken] = useState<string | null>(null);
   // 記錄抽卡前的收藏數，判斷是否為第一張
   const collectionCountRef = useRef(0);
 
@@ -108,13 +116,18 @@ function App() {
     }
   };
 
-  // 頁面載入時：追蹤頁面瀏覽 & 偵測 URL 中的 ?qr= 並暫存
+  // 頁面載入時：追蹤頁面瀏覽 & 偵測 URL 中的 ?qr= / ?wtransfer= 並暫存
   useEffect(() => {
     trackPageView('/');
     const urlParams = new URLSearchParams(window.location.search);
     const qrParam = urlParams.get('qr');
+    const transferParam = urlParams.get('wtransfer');
     if (qrParam) {
       localStorage.setItem(PENDING_QR_KEY, qrParam);
+      window.history.replaceState({}, document.title, '/');
+    }
+    if (transferParam && transferParam.startsWith('WTRX-')) {
+      localStorage.setItem(PENDING_TRANSFER_KEY, transferParam);
       window.history.replaceState({}, document.title, '/');
     }
   }, []);
@@ -128,6 +141,12 @@ function App() {
       if (!code) {
         loadCollection().then(redeemPendingQR);
         fetchBalance();
+        // 若有待領取的轉帳，自動觸發領取確認
+        const pendingTransfer = localStorage.getItem(PENDING_TRANSFER_KEY);
+        if (pendingTransfer) {
+          localStorage.removeItem(PENDING_TRANSFER_KEY);
+          setPendingClaimToken(pendingTransfer);
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,6 +173,12 @@ function App() {
             await loadCollection();
             await redeemPendingQR();
             fetchBalance();
+            // 登入後若有待領取的轉帳，自動觸發
+            const pendingTransfer = localStorage.getItem(PENDING_TRANSFER_KEY);
+            if (pendingTransfer) {
+              localStorage.removeItem(PENDING_TRANSFER_KEY);
+              setPendingClaimToken(pendingTransfer);
+            }
           }
         } catch (error) {
           console.error('LINE Login 失敗:', error);
@@ -170,8 +195,9 @@ function App() {
               cardId: response.data.card.id,
               isNew: response.data.isNew,
             });
-            setCollection(response.data.collection);
             window.history.replaceState({}, document.title, '/');
+            // 重新載入完整收藏，確保 pendingShares / shareTokens / drawChances 即時更新
+            await loadCollection();
           }
         } catch (error: any) {
           console.error('領取分享失敗:', error);
@@ -181,6 +207,34 @@ function App() {
       })();
     }
   }, [isAuthenticated]);
+
+  // 分享者：當自己分享出去的卡片被領取時，即時更新集合狀態
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    const channel = supabase
+      .channel(`shares-claimed-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'shares',
+          filter: `from_user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.new && payload.new.claimed) {
+            loadCollection();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user?.id]);
 
   // 解析 rawQR → 代碼字串（支援完整 URL 或純代碼）
   function extractQRCode(rawQR: string): string {
@@ -383,7 +437,7 @@ function App() {
                 </button>
 
                 {/* 咖啡儲值金 — 對齊按鈕列底部 */}
-                <WalletBalance />
+                <WalletBalance onTransferClick={() => setShowTransferModal(true)} />
               </div>
             ) : (
               <div className='scanner-container'>
@@ -470,6 +524,28 @@ function App() {
           onConfirm={handleWalletConfirm}
           onCancel={handleWalletCancel}
           loading={walletPaymentLoading}
+        />
+      )}
+
+      {/* 錢包轉帳彈窗（建立轉帳） */}
+      {showTransferModal && (
+        <WalletTransferModal
+          currentBalance={walletBalance}
+          onClose={() => setShowTransferModal(false)}
+          onBalanceChange={(newBalance) => setWalletBalance(newBalance)}
+        />
+      )}
+
+      {/* 領取轉帳確認彈窗 */}
+      {pendingClaimToken && (
+        <WalletTransferClaimModal
+          token={pendingClaimToken}
+          onClose={() => setPendingClaimToken(null)}
+          onClaimed={(amount: number) => {
+            fetchBalance();
+            alert(`🎉 成功收到 $${amount} 儲值金！`);
+            setPendingClaimToken(null);
+          }}
         />
       )}
     </div>

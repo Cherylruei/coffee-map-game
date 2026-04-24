@@ -13,6 +13,12 @@ type Period = 'today' | 'month' | 'year' | 'all';
 
 const QR_LIMIT = 5;
 
+interface TopupRecord {
+  amount: number;
+  payment_method: string | null;
+  used_at: string;
+}
+
 function filterByPeriod(orders: Order[], period: Period): Order[] {
   const now = new Date();
   return orders.filter((o) => {
@@ -86,6 +92,31 @@ function computeSummary(orders: Order[]) {
   };
 }
 
+function filterTopupByPeriod(topups: TopupRecord[], period: Period): TopupRecord[] {
+  const now = new Date();
+  return topups.filter((t) => {
+    const d = new Date(t.used_at);
+    if (isNaN(d.getTime())) return period === 'all';
+    const dUTC = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const nowUTC = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    if (period === 'today') return dUTC.getTime() === nowUTC.getTime();
+    if (period === 'month')
+      return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() === now.getUTCMonth();
+    if (period === 'year') return d.getUTCFullYear() === now.getUTCFullYear();
+    return true;
+  });
+}
+
+function computeTopupSummary(topups: TopupRecord[]) {
+  let total = 0, cashAmount = 0, lineAmount = 0;
+  for (const t of topups) {
+    total += t.amount;
+    if (t.payment_method === 'line') lineAmount += t.amount;
+    else cashAmount += t.amount;
+  }
+  return { total, cashAmount, lineAmount, count: topups.length };
+}
+
 export function StatsTab({ sessionToken, refreshSignal }: Props) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [qrAll, setQrAll] = useState<QRCodeItem[]>([]);
@@ -96,6 +127,7 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
     null,
   );
   const [period, setPeriod] = useState<Period>('today');
+  const [topups, setTopups] = useState<TopupRecord[]>([]);
 
   const loadStats = useCallback(async () => {
     const data = await api<{ success: boolean; stats: Stats }>(
@@ -140,18 +172,28 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
     if (data?.success) setLastInventory(data.inventory ?? null);
   }, [sessionToken]);
 
+  const loadTopups = useCallback(async () => {
+    const data = await api<{ success: boolean; topups: TopupRecord[] }>(
+      '/api/admin/topup-summary',
+      sessionToken,
+    );
+    if (data?.success) setTopups(data.topups || []);
+  }, [sessionToken]);
+
   useEffect(() => {
     loadStats();
     loadQRList();
     loadOrders();
     loadInventory();
-  }, [refreshSignal, loadStats, loadQRList, loadOrders, loadInventory]);
+    loadTopups();
+  }, [refreshSignal, loadStats, loadQRList, loadOrders, loadInventory, loadTopups]);
 
   function refresh() {
     loadStats();
     loadQRList();
     loadOrders();
     loadInventory();
+    loadTopups();
   }
 
   function handleSaved() {
@@ -171,6 +213,8 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
 
   const periodOrders = filterByPeriod(orders, period);
   const summary = computeSummary(periodOrders);
+  const periodTopups = filterTopupByPeriod(topups, period);
+  const topupSummary = computeTopupSummary(periodTopups);
 
   const PERIOD_LABELS: Record<Period, string> = {
     today: '今日',
@@ -225,6 +269,12 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
             <div className='lbl'>總杯數</div>
           </div>
           <div className='stat' style={{ gridColumn: 'span 2' }}>
+            <div className='num' style={{ color: '#2e7d32' }}>
+              ${topupSummary.total.toLocaleString()}
+            </div>
+            <div className='lbl'>總儲值金額</div>
+          </div>
+          <div className='stat' style={{ gridColumn: 'span 2' }}>
             <div className='num' style={{ color: 'var(--accent)' }}>
               ${summary.totalRevenue.toLocaleString()}
             </div>
@@ -233,7 +283,7 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
         </div>
 
         {/* 付款分類 */}
-        {summary.totalOrders > 0 && (
+        {(summary.totalOrders > 0 || topupSummary.count > 0) && (
           <div className='inv-breakdown' style={{ marginTop: 12 }}>
             <div className='inv-breakdown-row'>
               <span>💵 現金</span>
@@ -246,6 +296,12 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
               <span>
                 {summary.linePayCount} 筆・$
                 {summary.linePayAmount.toLocaleString()}
+              </span>
+            </div>
+            <div className='inv-breakdown-row'>
+              <span>💰 儲值金</span>
+              <span>
+                {topupSummary.count} 筆・${topupSummary.total.toLocaleString()}
               </span>
             </div>
           </div>
@@ -275,62 +331,6 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
             style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: 8 }}
           >
             {PERIOD_LABELS[period]}尚無點單紀錄
-          </p>
-        )}
-      </div>
-
-      {/* 庫存現況 */}
-      <div className='card'>
-        <h2>📦 庫存現況</h2>
-        {lastInventory ? (
-          <>
-            <div
-              style={{
-                fontSize: '0.78rem',
-                color: 'var(--muted)',
-                marginBottom: 10,
-              }}
-            >
-              最後盤點：{lastInventory.date}
-              {lastInventory.completed_by &&
-                ` ・ ${lastInventory.completed_by}`}
-            </div>
-            <div className='inv-breakdown'>
-              <div className='inv-breakdown-row'>
-                <span>☕ 咖啡豆</span>
-                <span>
-                  {lastInventory.coffee_beans_bags > 0
-                    ? `${lastInventory.coffee_beans_bags} 包`
-                    : ''}
-                  {lastInventory.coffee_beans_grams > 0
-                    ? ` + ${lastInventory.coffee_beans_grams}g`
-                    : ''}
-                  {lastInventory.coffee_beans_bags === 0 &&
-                  lastInventory.coffee_beans_grams === 0
-                    ? '0g'
-                    : ''}
-                </span>
-              </div>
-              <div className='inv-breakdown-row'>
-                <span>🥛 牛奶</span>
-                <span>
-                  {lastInventory.milk_bottles > 0
-                    ? `${lastInventory.milk_bottles} 瓶`
-                    : ''}
-                  {lastInventory.milk_ml > 0
-                    ? ` + ${lastInventory.milk_ml}ml`
-                    : ''}
-                  {lastInventory.milk_bottles === 0 &&
-                  lastInventory.milk_ml === 0
-                    ? '0ml'
-                    : ''}
-                </span>
-              </div>
-            </div>
-          </>
-        ) : (
-          <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-            尚無盤點紀錄，請至「盤點」頁面進行記錄
           </p>
         )}
       </div>
