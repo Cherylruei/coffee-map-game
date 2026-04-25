@@ -5,6 +5,13 @@
   "main": "index.js",
   "scripts": {
     "dev": "concurrently --names \"backend,frontend,merchant\" --prefix-colors \"blue,green,yellow\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\" \"npm run dev --prefix merchant\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:merchant": "npm run dev --prefix merchant",
+    "build:backend": "npm run build --prefix backend",
+    "build:frontend": "npm run build --prefix frontend",
+    "build:merchant": "npm run build --prefix merchant",
+    "build": "npm run build:backend && npm run build:frontend && npm run build:merchant",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

@@ -8,7 +8,8 @@
     "dev": "node node_modules/nodemon/bin/nodemon.js server-supabase.js",
     "dev-memory": "node node_modules/nodemon/bin/nodemon.js server.js",
     "dev-supabase": "node node_modules/nodemon/bin/nodemon.js server-supabase.js",
-    "start-supabase": "node server-supabase.js"
+    "start-supabase": "node server-supabase.js",
+    "build": "node --check server-supabase.js && echo \"Backend syntax OK\""
   },
   "keywords": [
     "coffee",
