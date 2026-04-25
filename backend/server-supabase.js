@@ -9,7 +9,7 @@ axios.defaults.adapter = 'http';
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('cross-fetch');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -43,7 +43,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const walletTopupLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-  keyGenerator: (req) => req.user?.userId || req.ip,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -53,7 +53,7 @@ const walletTopupLimiter = rateLimit({
 const walletTransferCreateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
-  keyGenerator: (req) => req.user?.userId || req.ip,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '建立轉帳過於頻繁，請稍後再試' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -63,7 +63,7 @@ const walletTransferCreateLimiter = rateLimit({
 const walletTransferClaimLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: (req) => req.user?.userId || req.ip,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -73,7 +73,7 @@ const walletTransferClaimLimiter = rateLimit({
 const gachaPullLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: (req) => req.user?.userId || req.ip,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -83,7 +83,7 @@ const gachaPullLimiter = rateLimit({
 const gachaDrawLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
-  keyGenerator: (req) => req.user?.userId || req.ip,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
   legacyHeaders: false,
