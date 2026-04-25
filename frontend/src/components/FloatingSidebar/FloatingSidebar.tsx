@@ -2,10 +2,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { IconContext } from 'react-icons';
 import { GiOpenTreasureChest } from 'react-icons/gi';
 import { FaRegShareSquare } from 'react-icons/fa';
+import { MdReceiptLong } from 'react-icons/md';
 
 interface FloatingSidebarProps {
   onTreasureClick: () => void;
   onShareClick: () => void;
+  onHistoryClick: () => void;
   collectedCount: number;
   shareTokens: number;
   showChestHint?: boolean;
@@ -14,6 +16,7 @@ interface FloatingSidebarProps {
 export function FloatingSidebar({
   onTreasureClick,
   onShareClick,
+  onHistoryClick,
   collectedCount,
   shareTokens,
   showChestHint = false,
@@ -130,6 +133,31 @@ export function FloatingSidebar({
             )}
           </AnimatePresence>
         </div>
+
+        {/* Divider */}
+        <div style={{ width: '28px', height: '1px', background: 'rgba(0,0,0,0.1)' }} />
+
+        {/* Transaction History */}
+        <motion.button
+          onClick={onHistoryClick}
+          whileHover={{ scale: 1.15 }}
+          whileTap={{ scale: 0.9 }}
+          aria-label='消費紀錄'
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            width: '42px',
+            height: '42px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '50%',
+            padding: 0,
+          }}
+        >
+          <MdReceiptLong size={24} color='#2ecc71' />
+        </motion.button>
 
         {/* Divider */}
         <div style={{ width: '28px', height: '1px', background: 'rgba(0,0,0,0.1)' }} />

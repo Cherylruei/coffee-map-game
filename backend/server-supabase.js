@@ -811,6 +811,28 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: '訂單項目不能為空' });
     }
 
+    // 查詢 QR code 是否已被顧客掃描，若有則取得 LINE 身分
+    let customerName = null;
+    let customerLineId = null;
+    if (qrCodes && qrCodes.length > 0) {
+      const { data: qrData } = await supabase
+        .from('qr_codes')
+        .select('used_by')
+        .eq('code', qrCodes[0])
+        .maybeSingle();
+
+      if (qrData?.used_by) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('display_name, line_user_id')
+          .eq('id', qrData.used_by)
+          .maybeSingle();
+
+        customerName = userData?.display_name ?? null;
+        customerLineId = userData?.line_user_id ?? null;
+      }
+    }
+
     const { data, error } = await supabase
       .from('orders')
       .insert({
@@ -822,6 +844,8 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
         payment_method: paymentMethod || 'cash',
         employee_id: employeeId || null,
         qr_codes: qrCodes || [],
+        customer_name: customerName,
+        customer_line_id: customerLineId,
       })
       .select()
       .single();
@@ -1303,20 +1327,64 @@ app.post('/api/wallet/topup', authenticateToken, walletTopupLimiter, async (req,
 // W3. 用戶查詢錢包餘額 + 最近 20 筆交易
 app.get('/api/wallet/balance', authenticateToken, async (req, res) => {
   try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
     const [walletResult, txResult] = await Promise.all([
       supabase.from('wallets').select('balance').eq('user_id', req.user.userId).single(),
       supabase
         .from('wallet_transactions')
         .select('id, amount, type, note, order_ref, created_at')
         .eq('user_id', req.user.userId)
-        .order('created_at', { ascending: false })
-        .limit(20),
+        .gte('created_at', thirtyDaysAgo)
+        .order('created_at', { ascending: false }),
     ]);
+
+    let transactions = txResult.data || [];
+
+    // Enrich deduct transactions: replace QR-code note with order item names
+    const orderRefs = [...new Set(
+      transactions
+        .filter(tx => tx.type === 'deduct' && tx.order_ref)
+        .map(tx => tx.order_ref)
+    )];
+
+    if (orderRefs.length > 0) {
+      const orderResults = await Promise.all(
+        orderRefs.map(ref =>
+          supabase
+            .from('orders')
+            .select('qr_codes, items')
+            .filter('qr_codes', 'cs', JSON.stringify([ref]))
+            .maybeSingle()
+        )
+      );
+
+      const qrToItems = {};
+      for (let i = 0; i < orderRefs.length; i++) {
+        const order = orderResults[i].data;
+        if (order?.items?.length) {
+          qrToItems[orderRefs[i]] = order.items
+            .map(item => `${item.name}${item.qty > 1 ? ` ×${item.qty}` : ''}`)
+            .join('、');
+        }
+      }
+
+      transactions = transactions.map(tx => {
+        if (tx.type === 'deduct' && tx.order_ref && qrToItems[tx.order_ref]) {
+          return { ...tx, note: qrToItems[tx.order_ref] };
+        }
+        // Clean up old QR-code-in-note format for records without a matched order
+        if (tx.type === 'deduct' && tx.note?.startsWith('消費扣款（QR:')) {
+          return { ...tx, note: '消費扣款' };
+        }
+        return tx;
+      });
+    }
 
     res.json({
       success: true,
       balance: walletResult.data?.balance ?? 0,
-      transactions: txResult.data || [],
+      transactions,
     });
   } catch (error) {
     console.error('Wallet balance error:', error);
@@ -1527,6 +1595,156 @@ app.post('/api/wallet/transfer/cancel', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Wallet transfer cancel error:', error);
     res.status(500).json({ success: false, message: '取消失敗' });
+  }
+});
+
+// ===== 月報表 API =====
+
+// R1. 產生月報表（銷售 / 會員 / 儲值 / 庫存）
+app.get('/api/admin/reports/monthly', authenticateAdmin, async (req, res) => {
+  try {
+    const now = new Date();
+    const year = parseInt(req.query.year) || now.getFullYear();
+    const month = parseInt(req.query.month) || (now.getMonth() + 1);
+
+    // 計算當月起訖（UTC 字串）
+    const monthStart = new Date(Date.UTC(year, month - 1, 1)).toISOString();
+    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)).toISOString();
+
+    // 並行查詢
+    const [ordersResult, totalUsersResult, newUsersResult, topupsResult, spendResult, inventoryResult] = await Promise.all([
+      // 當月訂單
+      supabase
+        .from('orders')
+        .select('*')
+        .gte('created_at', monthStart)
+        .lte('created_at', monthEnd),
+
+      // 總會員數
+      supabase
+        .from('users')
+        .select('id', { count: 'exact', head: true }),
+
+      // 當月新增會員
+      supabase
+        .from('users')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', monthStart)
+        .lte('created_at', monthEnd),
+
+      // 當月儲值統計
+      supabase
+        .from('wallet_transactions')
+        .select('amount')
+        .eq('type', 'topup')
+        .gte('created_at', monthStart)
+        .lte('created_at', monthEnd),
+
+      // 當月消費統計
+      supabase
+        .from('wallet_transactions')
+        .select('amount')
+        .eq('type', 'spend')
+        .gte('created_at', monthStart)
+        .lte('created_at', monthEnd),
+
+      // 最後一次庫存盤點
+      supabase
+        .from('inventory')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    // 計算銷售匯總
+    const orders = ordersResult.data || [];
+    let totalRevenue = 0, cashAmount = 0, linePayAmount = 0;
+    let cashCount = 0, linePayCount = 0, totalCups = 0;
+    const itemMap = {};
+
+    for (const order of orders) {
+      const amount = order.total_amount || 0;
+      totalRevenue += amount;
+
+      if (order.payment_method === 'line_pay') {
+        linePayCount++;
+        linePayAmount += amount;
+      } else {
+        cashCount++;
+        cashAmount += amount;
+      }
+
+      for (const item of order.items || []) {
+        totalCups += item.qty || 0;
+        itemMap[item.name] = (itemMap[item.name] || 0) + (item.qty || 0);
+      }
+    }
+
+    const topItems = Object.entries(itemMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([name, count]) => ({ name, count }));
+
+    // 計算儲值統計
+    const topups = topupsResult.data || [];
+    const totalTopupAmount = topups.reduce((s, t) => s + (t.amount || 0), 0);
+    const spends = spendResult.data || [];
+    const totalSpent = spends.reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+
+    res.json({
+      success: true,
+      report: {
+        period: { year, month },
+        sales: {
+          totalOrders: orders.length,
+          totalRevenue,
+          cashAmount,
+          linePayAmount,
+          cashCount,
+          linePayCount,
+          totalCups,
+          topItems,
+        },
+        members: {
+          totalUsers: totalUsersResult.count ?? 0,
+          newUsers: newUsersResult.count ?? 0,
+        },
+        wallet: {
+          totalTopups: topups.length,
+          totalTopupAmount,
+          totalSpent,
+        },
+        inventory: {
+          lastRecord: inventoryResult.data ?? null,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Monthly report error:', error);
+    res.status(500).json({ success: false, message: '報表產生失敗' });
+  }
+});
+
+// R2. 管理員查詢儲值金明細（含用戶 LINE 資訊）
+app.get('/api/admin/wallet-transactions', authenticateAdmin, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+
+    let query = supabase
+      .from('wallet_transactions')
+      .select('id, amount, type, note, order_ref, created_at, users(display_name, line_user_id)')
+      .order('created_at', { ascending: false });
+
+    if (start) query = query.gte('created_at', start);
+    if (end) query = query.lte('created_at', end);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    res.json({ success: true, transactions: data || [] });
+  } catch (error) {
+    console.error('Wallet transactions error:', error);
+    res.status(500).json({ success: false, message: '查詢失敗' });
   }
 });
 

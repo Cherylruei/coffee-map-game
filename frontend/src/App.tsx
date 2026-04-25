@@ -11,6 +11,7 @@ import { WalletPaymentModal } from './components/Wallet/WalletPaymentModal';
 import { WalletBalance } from './components/Wallet/WalletBalance';
 import { WalletTransferModal } from './components/Wallet/WalletTransferModal';
 import { WalletTransferClaimModal } from './components/Wallet/WalletTransferClaimModal';
+import { TransactionHistory } from './components/Wallet/TransactionHistory';
 import { useAuthStore } from './hooks/useAuth';
 import { supabase } from './utils/supabase';
 import { useCollectionStore } from './hooks/useCollection';
@@ -75,6 +76,11 @@ function App() {
   // 錢包轉帳彈窗
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [pendingClaimToken, setPendingClaimToken] = useState<string | null>(null);
+  // URL state: ?tab=history 顯示消費紀錄
+  const [showHistory, setShowHistory] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tab') === 'history';
+  });
   // 記錄抽卡前的收藏數，判斷是否為第一張
   const collectionCountRef = useRef(0);
 
@@ -497,6 +503,10 @@ function App() {
             setShowChestHint(false);
           }}
           onShareClick={() => setShareOpen(true)}
+          onHistoryClick={() => {
+            setShowHistory(true);
+            window.history.pushState({}, document.title, '/?tab=history');
+          }}
           collectedCount={Object.keys(collection).length}
           shareTokens={shareTokens}
           showChestHint={showChestHint}
@@ -548,6 +558,15 @@ function App() {
           }}
         />
       )}
+
+      {/* 消費紀錄 */}
+      <TransactionHistory
+        isOpen={showHistory}
+        onClose={() => {
+          setShowHistory(false);
+          window.history.replaceState({}, document.title, '/');
+        }}
+      />
     </div>
   );
 }
