@@ -91,43 +91,43 @@ export default function App() {
 
       {/* Tab Nav */}
       {!qrViewerOpen && (
-      <nav className='tab-nav'>
-        <button
-          className={`tab-btn${activeTab === 'order' ? ' active' : ''}`}
-          onClick={() => setActiveTab('order')}
-          aria-label='點單'
-        >
-          📋
-        </button>
-        <button
-          className={`tab-btn${activeTab === 'qr' ? ' active' : ''}`}
-          onClick={() => setActiveTab('qr')}
-          aria-label='抽卡'
-        >
-          🎴
-        </button>
-        <button
-          className={`tab-btn${activeTab === 'stats' ? ' active' : ''}`}
-          onClick={() => setActiveTab('stats')}
-          aria-label='統計'
-        >
-          📊
-        </button>
-        <button
-          className={`tab-btn${activeTab === 'inventory' ? ' active' : ''}`}
-          onClick={() => setActiveTab('inventory')}
-          aria-label='盤點'
-        >
-          📦
-        </button>
-        <button
-          className={`tab-btn${activeTab === 'menu' ? ' active' : ''}`}
-          onClick={() => setActiveTab('menu')}
-          aria-label='菜單'
-        >
-          🍽️
-        </button>
-      </nav>
+        <nav className='tab-nav'>
+          <button
+            className={`tab-btn${activeTab === 'order' ? ' active' : ''}`}
+            onClick={() => setActiveTab('order')}
+            aria-label='點單'
+          >
+            📋
+          </button>
+          <button
+            className={`tab-btn${activeTab === 'qr' ? ' active' : ''}`}
+            onClick={() => setActiveTab('qr')}
+            aria-label='抽卡'
+          >
+            🎴
+          </button>
+          <button
+            className={`tab-btn${activeTab === 'stats' ? ' active' : ''}`}
+            onClick={() => setActiveTab('stats')}
+            aria-label='統計'
+          >
+            📊
+          </button>
+          <button
+            className={`tab-btn${activeTab === 'inventory' ? ' active' : ''}`}
+            onClick={() => setActiveTab('inventory')}
+            aria-label='盤點'
+          >
+            📦
+          </button>
+          <button
+            className={`tab-btn${activeTab === 'menu' ? ' active' : ''}`}
+            onClick={() => setActiveTab('menu')}
+            aria-label='菜單'
+          >
+            🍽️
+          </button>
+        </nav>
       )}
     </div>
   );
