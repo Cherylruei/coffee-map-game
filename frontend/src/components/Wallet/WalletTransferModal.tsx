@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { walletAPI } from '../../utils/api';
+import { useDialog } from '../../hooks/useDialog';
 import './WalletTransferModal.css';
 
 interface WalletTransferModalProps {
@@ -24,6 +25,7 @@ export function WalletTransferModal({
   const [expiresAt, setExpiresAt] = useState('');
   const [copied, setCopied] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const showDialog = useDialog();
 
   const parsedAmount = parseInt(amount, 10);
   const isAmountValid =
@@ -80,24 +82,37 @@ export function WalletTransferModal({
     window.open(`https://line.me/R/msg/text/?${text}`, '_blank');
   };
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
     if (!transferToken || cancelling) return;
-    if (!confirm('確定取消此轉帳？金額將退回您的錢包。')) return;
-    setCancelling(true);
-    try {
-      const res = await walletAPI.cancelTransfer(transferToken);
-      const data = res.data;
-      if (data.success) {
-        alert(data.message);
-        onClose();
-      } else {
-        alert(data.message || '取消失敗');
-      }
-    } catch (e: any) {
-      alert(e.response?.data?.message || '取消失敗，請稍後再試');
-    } finally {
-      setCancelling(false);
-    }
+    showDialog({
+      type: 'confirm',
+      title: '確定取消此轉帳？',
+      message: '金額將退回您的錢包。',
+      buttons: [
+        { label: '返回', variant: 'secondary' },
+        {
+          label: '確定取消',
+          variant: 'danger',
+          onClick: async () => {
+            setCancelling(true);
+            try {
+              const res = await walletAPI.cancelTransfer(transferToken);
+              const data = res.data;
+              if (data.success) {
+                showDialog({ type: 'success', title: data.message });
+                onClose();
+              } else {
+                showDialog({ type: 'error', title: data.message || '取消失敗' });
+              }
+            } catch (e: any) {
+              showDialog({ type: 'error', title: e.response?.data?.message || '取消失敗，請稍後再試' });
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ],
+    });
   };
 
   const expireLabel = expiresAt
