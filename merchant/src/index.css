@@ -108,15 +108,28 @@ body,
   color: var(--muted);
   cursor: pointer;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s;
-  min-height: 44px;
-  font-size: 1.6rem;
+  gap: 3px;
+  transition: color 0.15s, opacity 0.15s;
+  min-height: 52px;
+  font-size: 0.65rem;
   line-height: 1;
+  opacity: 0.55;
+}
+.tab-btn span {
+  font-size: 0.65rem;
+  letter-spacing: 0.02em;
+}
+.tab-btn svg {
+  transition: transform 0.15s;
 }
 .tab-btn.active {
-  color: var(--accent);
+  opacity: 1;
+}
+.tab-btn.active svg {
+  transform: scale(1.12);
 }
 
 /* ── Card ── */

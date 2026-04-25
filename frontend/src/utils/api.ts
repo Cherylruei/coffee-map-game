@@ -62,6 +62,10 @@ export const shareAPI = {
 export const walletAPI = {
     getBalance: () => api.get('/wallet/balance'),
     topup: (code: string) => api.post('/wallet/topup', { code }),
+    createTransfer: (amount: number) => api.post('/wallet/transfer/create', { amount }),
+    claimTransfer: (token: string) => api.post('/wallet/transfer/claim', { token }),
+    cancelTransfer: (token: string) => api.post('/wallet/transfer/cancel', { token }),
+    getTransferStatus: (token: string) => api.get('/wallet/transfer/status', { params: { token } }),
 };
 
 export const qrcodeAPI = {

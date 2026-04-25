@@ -9,10 +9,10 @@ axios.defaults.adapter = 'http';
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('cross-fetch');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Supabase 初始化
 const supabase = createClient(
@@ -43,7 +43,27 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const walletTopupLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-  keyGenerator: (req) => req.user?.userId || req.ip,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
+  message: { success: false, message: '請求過於頻繁，請稍後再試' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 每個用戶每小時最多建立 10 筆轉帳（防濫用）
+const walletTransferCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
+  message: { success: false, message: '建立轉帳過於頻繁，請稍後再試' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 每個用戶每分鐘最多 10 次領取（防爆破）
+const walletTransferClaimLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -53,7 +73,7 @@ const walletTopupLimiter = rateLimit({
 const gachaPullLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: (req) => req.user?.userId || req.ip,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -63,7 +83,7 @@ const gachaPullLimiter = rateLimit({
 const gachaDrawLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
-  keyGenerator: (req) => req.user?.userId || req.ip,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -1216,17 +1236,19 @@ app.get('/api/admin/users/share-tokens', authenticateAdmin, async (req, res) => 
 // W1. 管理員生成儲值 QR Code（TOPUP- 前綴，一次性，30 分鐘有效）
 app.post('/api/admin/topup-qr/generate', authenticateAdmin, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, paymentMethod } = req.body;
     if (!amount || !Number.isInteger(amount) || amount <= 0) {
       return res.status(400).json({ success: false, message: '金額必須為正整數' });
     }
 
+    const pm = paymentMethod === 'line' ? 'line' : 'cash';
     const code = `TOPUP-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 分鐘
 
     const { error } = await supabase.from('topup_qr_codes').insert({
       code,
       amount,
+      payment_method: pm,
       expires_at: expiresAt.toISOString(),
     });
     if (error) throw error;
@@ -1237,12 +1259,29 @@ app.post('/api/admin/topup-qr/generate', authenticateAdmin, async (req, res) => 
         code,
         url: `${FRONTEND_URL}/?qr=${code}`,
         amount,
+        paymentMethod: pm,
         expiresAt: expiresAt.toISOString(),
       },
     });
   } catch (error) {
     console.error('Topup QR generate error:', error);
     res.status(500).json({ success: false, message: '生成儲值 QR 失敗' });
+  }
+});
+
+// W-admin. 管理員查詢儲值匯總（依 used_at 篩選）
+app.get('/api/admin/topup-summary', authenticateAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('topup_qr_codes')
+      .select('amount, payment_method, used_at')
+      .eq('used', true)
+      .not('used_at', 'is', null);
+    if (error) throw error;
+    res.json({ success: true, topups: data || [] });
+  } catch (error) {
+    console.error('Topup summary error:', error);
+    res.status(500).json({ success: false, message: '查詢儲值統計失敗' });
   }
 });
 
@@ -1399,6 +1438,163 @@ app.get('/api/qrcode/info', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('QR info error:', error);
     res.status(500).json({ success: false, message: '查詢失敗' });
+  }
+});
+
+// ===== 錢包轉帳 API =====
+
+// WT1. 建立轉帳連結（從發送方扣款，凍結至對方領取）
+app.post('/api/wallet/transfer/create', authenticateToken, walletTransferCreateLimiter, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount || !Number.isInteger(amount) || amount < 10 || amount > 5000) {
+      return res.status(400).json({ success: false, message: '金額必須為 10~5000 之間的整數' });
+    }
+
+    const token = `WTRX-${crypto.randomBytes(16).toString('hex')}`;
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 小時有效
+
+    const { data: result, error } = await supabase.rpc('create_wallet_transfer', {
+      p_from_user_id: req.user.userId,
+      p_amount:       amount,
+      p_token:        token,
+      p_expires_at:   expiresAt.toISOString(),
+    });
+    if (error) throw error;
+
+    if (!result.success) {
+      const msgMap = {
+        wallet_not_found:     '尚未建立錢包，請先儲值',
+        insufficient_balance: `餘額不足（目前 $${result.balance}，需 $${result.required}）`,
+      };
+      return res.status(400).json({
+        success: false,
+        message: msgMap[result.error] || '轉帳失敗',
+        balance: result.balance ?? 0,
+      });
+    }
+
+    res.json({
+      success:     true,
+      token,
+      transferUrl: `${FRONTEND_URL}/?wtransfer=${token}`,
+      amount,
+      expiresAt:   expiresAt.toISOString(),
+      newBalance:  result.new_balance,
+    });
+  } catch (error) {
+    console.error('Wallet transfer create error:', error);
+    res.status(500).json({ success: false, message: '建立轉帳失敗' });
+  }
+});
+
+// WT2. 預覽轉帳資訊（顯示金額，不需登入即可查詢，但 claim 需登入）
+app.get('/api/wallet/transfer/status', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token || typeof token !== 'string' || !token.startsWith('WTRX-')) {
+      return res.status(400).json({ success: false, message: '無效的轉帳代碼' });
+    }
+
+    const { data: transfer } = await supabase
+      .from('wallet_transfers')
+      .select('amount, status, expires_at, created_at')
+      .eq('token', token)
+      .single();
+
+    if (!transfer) {
+      return res.status(404).json({ success: false, message: '轉帳代碼不存在' });
+    }
+
+    const isExpired = transfer.status === 'pending' && new Date(transfer.expires_at) < new Date();
+
+    res.json({
+      success:   true,
+      amount:    transfer.amount,
+      status:    isExpired ? 'expired' : transfer.status,
+      expiresAt: transfer.expires_at,
+    });
+  } catch (error) {
+    console.error('Wallet transfer status error:', error);
+    res.status(500).json({ success: false, message: '查詢失敗' });
+  }
+});
+
+// WT3. 領取轉帳（需 LINE 登入）
+app.post('/api/wallet/transfer/claim', authenticateToken, walletTransferClaimLimiter, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token || typeof token !== 'string' || !token.startsWith('WTRX-')) {
+      return res.status(400).json({ success: false, message: '無效的轉帳代碼' });
+    }
+
+    const { data: result, error } = await supabase.rpc('claim_wallet_transfer', {
+      p_token:      token,
+      p_claimer_id: req.user.userId,
+    });
+    if (error) throw error;
+
+    if (!result.success) {
+      const msgMap = {
+        not_found:       '轉帳代碼不存在',
+        already_claimed: '此轉帳已被領取',
+        cancelled:       '此轉帳已被取消',
+        expired:         '轉帳連結已過期，金額已退回給轉帳方',
+        self_claim:      '不能領取自己發送的轉帳',
+      };
+      return res.status(400).json({
+        success: false,
+        message: msgMap[result.error] || '領取失敗',
+      });
+    }
+
+    res.json({
+      success:    true,
+      message:    `成功收到 $${result.amount} 儲值金！`,
+      amount:     result.amount,
+    });
+  } catch (error) {
+    console.error('Wallet transfer claim error:', error);
+    res.status(500).json({ success: false, message: '領取失敗' });
+  }
+});
+
+// WT4. 取消轉帳（僅發送方可取消，退款回帳）
+app.post('/api/wallet/transfer/cancel', authenticateToken, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token || typeof token !== 'string' || !token.startsWith('WTRX-')) {
+      return res.status(400).json({ success: false, message: '無效的轉帳代碼' });
+    }
+
+    const { data: result, error } = await supabase.rpc('cancel_wallet_transfer', {
+      p_token:   token,
+      p_user_id: req.user.userId,
+    });
+    if (error) throw error;
+
+    if (!result.success) {
+      const msgMap = {
+        not_found:    '轉帳代碼不存在',
+        unauthorized: '您無權取消此轉帳',
+        claimed:      '此轉帳已被領取，無法取消',
+        cancelled:    '此轉帳已取消',
+        expired:      '此轉帳已過期',
+      };
+      return res.status(400).json({
+        success: false,
+        message: msgMap[result.error] || '取消失敗',
+      });
+    }
+
+    res.json({
+      success:  true,
+      message:  `已取消轉帳，$${result.refunded} 已退回您的錢包`,
+      refunded: result.refunded,
+    });
+  } catch (error) {
+    console.error('Wallet transfer cancel error:', error);
+    res.status(500).json({ success: false, message: '取消失敗' });
   }
 });
 

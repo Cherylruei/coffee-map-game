@@ -173,9 +173,10 @@ function Category({ category }: CategoryProps) {
 
 interface Props {
   sessionToken: string;
+  onMenuSaved?: () => void;
 }
 
-function MenuTabRoot({ sessionToken }: Props) {
+function MenuTabRoot({ sessionToken, onMenuSaved }: Props) {
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -276,6 +277,7 @@ function MenuTabRoot({ sessionToken }: Props) {
     if (res && (res as any).success) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      onMenuSaved?.();
     } else {
       alert((res as any)?.message || '儲存失敗，請確認 Supabase settings 表已建立');
     }

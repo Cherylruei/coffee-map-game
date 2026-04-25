@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ClipboardList, Wallet, BarChart2, Package, UtensilsCrossed } from 'lucide-react';
 import { StaffInfo } from './types';
 import { LoginPage } from './components/LoginPage';
 import { OrderTab } from './components/OrderTab';
@@ -14,6 +15,7 @@ export default function App() {
   const [staffInfo, setStaffInfo] = useState<StaffInfo | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('order');
   const [statsRefresh, setStatsRefresh] = useState(0);
+  const [menuVersion, setMenuVersion] = useState(0);
   const [qrViewerOpen, setQrViewerOpen] = useState(false);
 
   function handleLogin(token: string, staff: StaffInfo | null) {
@@ -30,6 +32,10 @@ export default function App() {
 
   function triggerStatsRefresh() {
     setStatsRefresh((n) => n + 1);
+  }
+
+  function triggerMenuRefresh() {
+    setMenuVersion((n) => n + 1);
   }
 
   if (!sessionToken) {
@@ -62,6 +68,7 @@ export default function App() {
             staffLineId={staffInfo?.lineId || null}
             onOrderCommitted={triggerStatsRefresh}
             onQRViewerChange={setQrViewerOpen}
+            menuRefreshSignal={menuVersion}
           />
         </div>
 
@@ -85,49 +92,55 @@ export default function App() {
         </div>
 
         <div className={`panel${activeTab === 'menu' ? ' active' : ''}`}>
-          <MenuTab sessionToken={sessionToken} />
+          <MenuTab sessionToken={sessionToken} onMenuSaved={triggerMenuRefresh} />
         </div>
+
       </div>
 
       {/* Tab Nav */}
       {!qrViewerOpen && (
-        <nav className='tab-nav'>
-          <button
-            className={`tab-btn${activeTab === 'order' ? ' active' : ''}`}
-            onClick={() => setActiveTab('order')}
-            aria-label='點單'
-          >
-            📋
-          </button>
-          <button
-            className={`tab-btn${activeTab === 'qr' ? ' active' : ''}`}
-            onClick={() => setActiveTab('qr')}
-            aria-label='抽卡'
-          >
-            🎴
-          </button>
-          <button
-            className={`tab-btn${activeTab === 'stats' ? ' active' : ''}`}
-            onClick={() => setActiveTab('stats')}
-            aria-label='統計'
-          >
-            📊
-          </button>
-          <button
-            className={`tab-btn${activeTab === 'inventory' ? ' active' : ''}`}
-            onClick={() => setActiveTab('inventory')}
-            aria-label='盤點'
-          >
-            📦
-          </button>
-          <button
-            className={`tab-btn${activeTab === 'menu' ? ' active' : ''}`}
-            onClick={() => setActiveTab('menu')}
-            aria-label='菜單'
-          >
-            🍽️
-          </button>
-        </nav>
+      <nav className='tab-nav'>
+        <button
+          className={`tab-btn${activeTab === 'order' ? ' active' : ''}`}
+          onClick={() => setActiveTab('order')}
+          aria-label='點單'
+        >
+          <ClipboardList size={22} color='#4A90D9' />
+          <span>點單</span>
+        </button>
+        <button
+          className={`tab-btn${activeTab === 'qr' ? ' active' : ''}`}
+          onClick={() => setActiveTab('qr')}
+          aria-label='抽卡'
+        >
+          <Wallet size={22} color='#E8A838' />
+          <span>儲值/抽卡</span>
+        </button>
+        <button
+          className={`tab-btn${activeTab === 'stats' ? ' active' : ''}`}
+          onClick={() => setActiveTab('stats')}
+          aria-label='統計'
+        >
+          <BarChart2 size={22} color='#5CB85C' />
+          <span>統計</span>
+        </button>
+        <button
+          className={`tab-btn${activeTab === 'inventory' ? ' active' : ''}`}
+          onClick={() => setActiveTab('inventory')}
+          aria-label='盤點'
+        >
+          <Package size={22} color='#9B59B6' />
+          <span>盤點</span>
+        </button>
+        <button
+          className={`tab-btn${activeTab === 'menu' ? ' active' : ''}`}
+          onClick={() => setActiveTab('menu')}
+          aria-label='菜單'
+        >
+          <UtensilsCrossed size={22} color='#E74C3C' />
+          <span>菜單</span>
+        </button>
+      </nav>
       )}
     </div>
   );

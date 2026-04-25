@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Stats, QRCodeItem, Order, InventoryRecord } from '../types';
+import { Stats, QRCodeItem, Order } from '../types';
 import { api } from '../utils/api';
 import { fmtDate } from '../utils/format';
 import { OrderEditModal } from './OrderEditModal';
@@ -12,6 +12,22 @@ interface Props {
 type Period = 'today' | 'month' | 'year' | 'all';
 
 const QR_LIMIT = 5;
+
+interface TopupRecord {
+  amount: number;
+  payment_method: string | null;
+  used_at: string;
+}
+
+interface WalletTransaction {
+  id: string;
+  amount: number;
+  type: 'topup' | 'spend';
+  note?: string | null;
+  order_ref?: string | null;
+  created_at: string;
+  users?: { display_name: string | null; line_user_id: string | null } | null;
+}
 
 function filterByPeriod(orders: Order[], period: Period): Order[] {
   const now = new Date();
@@ -86,16 +102,134 @@ function computeSummary(orders: Order[]) {
   };
 }
 
+function filterTopupByPeriod(topups: TopupRecord[], period: Period): TopupRecord[] {
+  const now = new Date();
+  return topups.filter((t) => {
+    const d = new Date(t.used_at);
+    if (isNaN(d.getTime())) return period === 'all';
+    const dUTC = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const nowUTC = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    if (period === 'today') return dUTC.getTime() === nowUTC.getTime();
+    if (period === 'month')
+      return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() === now.getUTCMonth();
+    if (period === 'year') return d.getUTCFullYear() === now.getUTCFullYear();
+    return true;
+  });
+}
+
+function computeTopupSummary(topups: TopupRecord[]) {
+  let total = 0, cashAmount = 0, lineAmount = 0;
+  for (const t of topups) {
+    total += t.amount;
+    if (t.payment_method === 'line') lineAmount += t.amount;
+    else cashAmount += t.amount;
+  }
+  return { total, cashAmount, lineAmount, count: topups.length };
+}
+
+function periodToDateRange(period: Period): { start?: string; end?: string } {
+  const now = new Date();
+  if (period === 'today') {
+    const d = now.toISOString().slice(0, 10);
+    return { start: `${d}T00:00:00.000Z`, end: `${d}T23:59:59.999Z` };
+  }
+  if (period === 'month') {
+    const y = now.getUTCFullYear(), m = now.getUTCMonth();
+    return {
+      start: new Date(Date.UTC(y, m, 1)).toISOString(),
+      end: new Date(Date.UTC(y, m + 1, 0, 23, 59, 59, 999)).toISOString(),
+    };
+  }
+  if (period === 'year') {
+    const y = now.getUTCFullYear();
+    return {
+      start: new Date(Date.UTC(y, 0, 1)).toISOString(),
+      end: new Date(Date.UTC(y, 11, 31, 23, 59, 59, 999)).toISOString(),
+    };
+  }
+  return {};
+}
+
+function paymentLabel(method: string | undefined): string {
+  if (method === 'line_pay') return 'LINE Pay';
+  if (method === 'wallet') return '儲值金';
+  return '現金';
+}
+
+function exportCSV(
+  orders: Order[],
+  walletTxs: WalletTransaction[],
+  periodLabel: string,
+) {
+  const rows: string[][] = [];
+
+  rows.push(['【訂單明細】']);
+  rows.push(['日期', '員工', '顧客（LINE 名稱）', 'LINE ID / 員工編號', '品項', '數量', '金額', '付款方式']);
+
+  for (const order of orders) {
+    const date = fmtDate(order.createdAt ?? order.created_at);
+    const staff = order.staffName ?? order.staff_name ?? '未知';
+    const payment = paymentLabel(order.paymentMethod ?? order.payment_method);
+    const total = String(order.totalAmount ?? order.total_amount ?? 0);
+    const custName = order.customerName ?? order.customer_name ?? '';
+    const custId = order.customerLineId ?? order.customer_line_id
+      ?? order.employeeId ?? order.employee_id ?? '';
+
+    if (!order.items || order.items.length === 0) {
+      rows.push([date, staff, custName, custId, '(無品項)', '0', total, payment]);
+    } else {
+      order.items.forEach((item, idx) => {
+        rows.push([
+          idx === 0 ? date : '',
+          idx === 0 ? staff : '',
+          idx === 0 ? custName : '',
+          idx === 0 ? custId : '',
+          item.name,
+          String(item.qty),
+          idx === 0 ? total : '',
+          idx === 0 ? payment : '',
+        ]);
+      });
+    }
+  }
+  if (orders.length === 0) rows.push(['(本期間無訂單)']);
+
+  rows.push([]);
+  rows.push(['【儲值金明細】']);
+  rows.push(['日期', 'LINE 名稱', 'LINE ID', '類型', '金額', '備註']);
+  for (const tx of walletTxs) {
+    rows.push([
+      fmtDate(tx.created_at),
+      tx.users?.display_name ?? '—',
+      tx.users?.line_user_id ?? '—',
+      tx.type === 'topup' ? '儲值' : '消費',
+      String(Math.abs(tx.amount)),
+      tx.note ?? '',
+    ]);
+  }
+  if (walletTxs.length === 0) rows.push(['(本期間無儲值金交易)']);
+
+  const csv = rows
+    .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `銷售報表_${periodLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function StatsTab({ sessionToken, refreshSignal }: Props) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [qrAll, setQrAll] = useState<QRCodeItem[]>([]);
   const [qrExpanded, setQrExpanded] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [lastInventory, setLastInventory] = useState<InventoryRecord | null>(
-    null,
-  );
   const [period, setPeriod] = useState<Period>('today');
+  const [topups, setTopups] = useState<TopupRecord[]>([]);
+  const [walletTxs, setWalletTxs] = useState<WalletTransaction[]>([]);
 
   const loadStats = useCallback(async () => {
     const data = await api<{ success: boolean; stats: Stats }>(
@@ -132,26 +266,41 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
     if (data?.success) setOrders(data.orders || []);
   }, [sessionToken]);
 
-  const loadInventory = useCallback(async () => {
-    const data = await api<{
-      success: boolean;
-      inventory: InventoryRecord | null;
-    }>('/api/inventory/last', sessionToken);
-    if (data?.success) setLastInventory(data.inventory ?? null);
+  const loadTopups = useCallback(async () => {
+    const data = await api<{ success: boolean; topups: TopupRecord[] }>(
+      '/api/admin/topup-summary',
+      sessionToken,
+    );
+    if (data?.success) setTopups(data.topups || []);
+  }, [sessionToken]);
+
+  const loadWalletTxs = useCallback(async (p: Period) => {
+    const { start, end } = periodToDateRange(p);
+    const params = new URLSearchParams();
+    if (start) params.set('start', start);
+    if (end) params.set('end', end);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const data = await api<{ success: boolean; transactions: WalletTransaction[] }>(
+      `/api/admin/wallet-transactions${qs}`,
+      sessionToken,
+    );
+    if (data?.success) setWalletTxs(data.transactions || []);
   }, [sessionToken]);
 
   useEffect(() => {
     loadStats();
     loadQRList();
     loadOrders();
-    loadInventory();
-  }, [refreshSignal, loadStats, loadQRList, loadOrders, loadInventory]);
+    loadTopups();
+    loadWalletTxs(period);
+  }, [refreshSignal, loadStats, loadQRList, loadOrders, loadTopups, loadWalletTxs, period]);
 
   function refresh() {
     loadStats();
     loadQRList();
     loadOrders();
-    loadInventory();
+    loadTopups();
+    loadWalletTxs(period);
   }
 
   function handleSaved() {
@@ -171,6 +320,8 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
 
   const periodOrders = filterByPeriod(orders, period);
   const summary = computeSummary(periodOrders);
+  const periodTopups = filterTopupByPeriod(topups, period);
+  const topupSummary = computeTopupSummary(periodTopups);
 
   const PERIOD_LABELS: Record<Period, string> = {
     today: '今日',
@@ -192,13 +343,23 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
           }}
         >
           <h2 style={{ margin: 0 }}>📊 銷售匯總</h2>
-          <button
-            className='btn outline'
-            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-            onClick={refresh}
-          >
-            重整
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className='btn outline'
+              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+              onClick={() => exportCSV(periodOrders, walletTxs, PERIOD_LABELS[period])}
+              disabled={periodOrders.length === 0 && walletTxs.length === 0}
+            >
+              匯出 CSV
+            </button>
+            <button
+              className='btn outline'
+              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+              onClick={refresh}
+            >
+              重整
+            </button>
+          </div>
         </div>
 
         {/* 期間選擇 */}
@@ -207,7 +368,7 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
             <button
               key={p}
               className={`period-tab${period === p ? ' active' : ''}`}
-              onClick={() => setPeriod(p)}
+              onClick={() => { setPeriod(p); loadWalletTxs(p); }}
             >
               {PERIOD_LABELS[p]}
             </button>
@@ -225,6 +386,12 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
             <div className='lbl'>總杯數</div>
           </div>
           <div className='stat' style={{ gridColumn: 'span 2' }}>
+            <div className='num' style={{ color: '#2e7d32' }}>
+              ${topupSummary.total.toLocaleString()}
+            </div>
+            <div className='lbl'>總儲值金額</div>
+          </div>
+          <div className='stat' style={{ gridColumn: 'span 2' }}>
             <div className='num' style={{ color: 'var(--accent)' }}>
               ${summary.totalRevenue.toLocaleString()}
             </div>
@@ -233,7 +400,7 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
         </div>
 
         {/* 付款分類 */}
-        {summary.totalOrders > 0 && (
+        {(summary.totalOrders > 0 || topupSummary.count > 0) && (
           <div className='inv-breakdown' style={{ marginTop: 12 }}>
             <div className='inv-breakdown-row'>
               <span>💵 現金</span>
@@ -246,6 +413,12 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
               <span>
                 {summary.linePayCount} 筆・$
                 {summary.linePayAmount.toLocaleString()}
+              </span>
+            </div>
+            <div className='inv-breakdown-row'>
+              <span>💰 儲值金</span>
+              <span>
+                {topupSummary.count} 筆・${topupSummary.total.toLocaleString()}
               </span>
             </div>
           </div>
@@ -275,62 +448,6 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
             style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: 8 }}
           >
             {PERIOD_LABELS[period]}尚無點單紀錄
-          </p>
-        )}
-      </div>
-
-      {/* 庫存現況 */}
-      <div className='card'>
-        <h2>📦 庫存現況</h2>
-        {lastInventory ? (
-          <>
-            <div
-              style={{
-                fontSize: '0.78rem',
-                color: 'var(--muted)',
-                marginBottom: 10,
-              }}
-            >
-              最後盤點：{lastInventory.date}
-              {lastInventory.completed_by &&
-                ` ・ ${lastInventory.completed_by}`}
-            </div>
-            <div className='inv-breakdown'>
-              <div className='inv-breakdown-row'>
-                <span>☕ 咖啡豆</span>
-                <span>
-                  {lastInventory.coffee_beans_bags > 0
-                    ? `${lastInventory.coffee_beans_bags} 包`
-                    : ''}
-                  {lastInventory.coffee_beans_grams > 0
-                    ? ` + ${lastInventory.coffee_beans_grams}g`
-                    : ''}
-                  {lastInventory.coffee_beans_bags === 0 &&
-                  lastInventory.coffee_beans_grams === 0
-                    ? '0g'
-                    : ''}
-                </span>
-              </div>
-              <div className='inv-breakdown-row'>
-                <span>🥛 牛奶</span>
-                <span>
-                  {lastInventory.milk_bottles > 0
-                    ? `${lastInventory.milk_bottles} 瓶`
-                    : ''}
-                  {lastInventory.milk_ml > 0
-                    ? ` + ${lastInventory.milk_ml}ml`
-                    : ''}
-                  {lastInventory.milk_bottles === 0 &&
-                  lastInventory.milk_ml === 0
-                    ? '0ml'
-                    : ''}
-                </span>
-              </div>
-            </div>
-          </>
-        ) : (
-          <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-            尚無盤點紀錄，請至「盤點」頁面進行記錄
           </p>
         )}
       </div>
@@ -377,13 +494,11 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
               .join('・');
             const total = order.totalAmount ?? order.total_amount ?? '—';
             const discount = order.discount ?? 0;
-            const payment =
-              (order.paymentMethod ?? order.payment_method) === 'line_pay'
-                ? 'LINE Pay'
-                : '現金';
+            const payment = paymentLabel(order.paymentMethod ?? order.payment_method);
             const staff = order.staffName ?? order.staff_name ?? '未知員工';
             const at = fmtDate(order.createdAt ?? order.created_at);
             const qrCount = (order.qrCodes ?? order.qr_codes ?? []).length;
+            const custName = order.customerName ?? order.customer_name;
             const empId = order.employeeId ?? order.employee_id;
             return (
               <div key={i} className='order-record'>
@@ -408,11 +523,15 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
                     </span>
                   )}
                   ・{payment}・{qrCount} 張 QR
-                  {empId && (
+                  {custName ? (
+                    <span style={{ marginLeft: 6, color: 'var(--accent)' }}>
+                      👤 {custName}
+                    </span>
+                  ) : empId ? (
                     <span style={{ marginLeft: 6, color: 'var(--muted)' }}>
                       員編：{empId}
                     </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
             );
