@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TodayStats, InventoryRecord } from '../types';
 import { api } from '../utils/api';
+import { useDialog } from '../context/DialogContext';
 
 interface Props {
   sessionToken: string;
@@ -33,6 +34,7 @@ export function InventoryTab({
   );
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
+  const showDialog = useDialog();
 
   // 盤點輸入
   const [coffeeBags, setCoffeeBags] = useState('');
@@ -91,8 +93,10 @@ export function InventoryTab({
   const restockCoffeeGramsInput = parseInt(restockCoffeeGrams) || 0;
   const restockMilkInput = parseInt(restockMilkBottles) || 0;
   const restockMilkMlInput = parseInt(restockMilkMl) || 0;
-  const restockCoffeeTotalGrams = restockCoffeeInput * COFFEE_GRAMS_PER_BAG + restockCoffeeGramsInput;
-  const restockMilkTotalMl = restockMilkInput * MILK_ML_PER_BOTTLE + restockMilkMlInput;
+  const restockCoffeeTotalGrams =
+    restockCoffeeInput * COFFEE_GRAMS_PER_BAG + restockCoffeeGramsInput;
+  const restockMilkTotalMl =
+    restockMilkInput * MILK_ML_PER_BOTTLE + restockMilkMlInput;
   const hasRestockInput = restockCoffeeTotalGrams > 0 || restockMilkTotalMl > 0;
 
   // 計算今日用量（比對上次剩餘）
@@ -106,8 +110,10 @@ export function InventoryTab({
 
   if (lastInventory && (coffeeBeansInput > 0 || coffeeGramsInput > 0)) {
     const prevTotalGrams =
-      lastInventory.coffee_beans_bags * COFFEE_GRAMS_PER_BAG + lastInventory.coffee_beans_grams;
-    const currTotalGrams = coffeeBeansInput * COFFEE_GRAMS_PER_BAG + coffeeGramsInput;
+      lastInventory.coffee_beans_bags * COFFEE_GRAMS_PER_BAG +
+      lastInventory.coffee_beans_grams;
+    const currTotalGrams =
+      coffeeBeansInput * COFFEE_GRAMS_PER_BAG + coffeeGramsInput;
     coffeeUsedGrams = Math.max(0, prevTotalGrams - currTotalGrams);
   }
 
@@ -125,7 +131,7 @@ export function InventoryTab({
 
   async function handleSubmit() {
     if (!coffeeBags && !coffeeGrams && !milkBottles && !milkMl) {
-      alert('請至少輸入一項盤點資料');
+      showDialog({ type: 'warning', title: '請至少輸入一項盤點資料' });
       return;
     }
     setSaving(true);
@@ -150,18 +156,18 @@ export function InventoryTab({
       } else {
         const errorMsg = (result as any)?.message || '提交失敗，請稍後再試';
         console.error('盤點提交失敗:', result);
-        alert(errorMsg);
+        showDialog({ type: 'error', title: errorMsg });
       }
     } catch (error) {
       setSaving(false);
       console.error('盤點提交錯誤:', error);
-      alert('提交失敗，請確認網路連線');
+      showDialog({ type: 'error', title: '提交失敗，請確認網路連線' });
     }
   }
 
   async function handleRestock() {
     if (!hasRestockInput) {
-      alert('請至少輸入一項補貨數量');
+      showDialog({ type: 'warning', title: '請至少輸入一項補貨數量' });
       return;
     }
     setRestocking(true);
@@ -208,12 +214,12 @@ export function InventoryTab({
         setTimeout(() => setRestocked(false), 3000);
       } else {
         const errorMsg = (result as any)?.message || '補貨記錄失敗';
-        alert(errorMsg);
+        showDialog({ type: 'error', title: errorMsg });
       }
     } catch (error) {
       setRestocking(false);
       console.error('補貨提交錯誤:', error);
-      alert('補貨提交失敗，請確認網路連線');
+      showDialog({ type: 'error', title: '補貨提交失敗，請確認網路連線' });
     }
   }
 
@@ -250,7 +256,7 @@ export function InventoryTab({
         >
           資料已保存
         </div>
-        {suggestion && (
+        {/* {suggestion && (
           <div className='suggestion-box'>
             <div className='suggestion-title'>💡 下次建議攜帶</div>
             <div className='suggestion-row'>
@@ -266,7 +272,7 @@ export function InventoryTab({
               </span>
             </div>
           </div>
-        )}
+        )} */}
         <button
           className='btn outline'
           style={{ marginTop: 16 }}
@@ -385,26 +391,38 @@ export function InventoryTab({
               <div className='inv-stat-lbl'>咖啡豆（克）</div>
             </div>
             <div className='inv-stat-item'>
-              <div className='inv-stat-num'>
-                {lastInventory.milk_bottles}
-              </div>
+              <div className='inv-stat-num'>{lastInventory.milk_bottles}</div>
               <div className='inv-stat-lbl'>牛奶（瓶）</div>
             </div>
             <div className='inv-stat-item'>
-              <div className='inv-stat-num'>
-                {lastInventory.milk_ml}
-              </div>
+              <div className='inv-stat-num'>{lastInventory.milk_ml}</div>
               <div className='inv-stat-lbl'>牛奶（ml）</div>
             </div>
           </div>
           <div className='inv-stock-summary'>
             <div className='inv-breakdown-row'>
               <span>☕ 咖啡豆總量</span>
-              <span>{lastInventory.coffee_beans_bags} 包 {lastInventory.coffee_beans_grams > 0 ? `${lastInventory.coffee_beans_grams}克` : ''}（共 {lastInventory.coffee_beans_bags * COFFEE_GRAMS_PER_BAG + lastInventory.coffee_beans_grams}g）</span>
+              <span>
+                {lastInventory.coffee_beans_bags} 包{' '}
+                {lastInventory.coffee_beans_grams > 0
+                  ? `${lastInventory.coffee_beans_grams}克`
+                  : ''}
+                （共{' '}
+                {lastInventory.coffee_beans_bags * COFFEE_GRAMS_PER_BAG +
+                  lastInventory.coffee_beans_grams}
+                g）
+              </span>
             </div>
             <div className='inv-breakdown-row'>
               <span>🥛 牛奶總量</span>
-              <span>{lastInventory.milk_bottles} 瓶 {lastInventory.milk_ml > 0 ? `${lastInventory.milk_ml}ml` : ''}（共 {lastInventory.milk_bottles * MILK_ML_PER_BOTTLE + lastInventory.milk_ml}ml）</span>
+              <span>
+                {lastInventory.milk_bottles} 瓶{' '}
+                {lastInventory.milk_ml > 0 ? `${lastInventory.milk_ml}ml` : ''}
+                （共{' '}
+                {lastInventory.milk_bottles * MILK_ML_PER_BOTTLE +
+                  lastInventory.milk_ml}
+                ml）
+              </span>
             </div>
           </div>
         </div>
@@ -442,9 +460,7 @@ export function InventoryTab({
             </div>
           </div>
           {restockCoffeeTotalGrams > 0 && (
-            <div className='restock-total'>
-              ＝ {restockCoffeeTotalGrams}g
-            </div>
+            <div className='restock-total'>＝ {restockCoffeeTotalGrams}g</div>
           )}
         </div>
 
@@ -476,9 +492,7 @@ export function InventoryTab({
             </div>
           </div>
           {restockMilkTotalMl > 0 && (
-            <div className='restock-total'>
-              ＝ {restockMilkTotalMl}ml
-            </div>
+            <div className='restock-total'>＝ {restockMilkTotalMl}ml</div>
           )}
         </div>
 
@@ -489,13 +503,25 @@ export function InventoryTab({
             {restockCoffeeTotalGrams > 0 && (
               <div className='restock-total-row'>
                 <span>☕ 咖啡豆</span>
-                <span>+{restockCoffeeInput > 0 ? `${restockCoffeeInput} 包` : ''}{restockCoffeeGramsInput > 0 ? `${restockCoffeeInput > 0 ? ' + ' : ''}${restockCoffeeGramsInput}g` : ''}（共 {restockCoffeeTotalGrams}g）</span>
+                <span>
+                  +{restockCoffeeInput > 0 ? `${restockCoffeeInput} 包` : ''}
+                  {restockCoffeeGramsInput > 0
+                    ? `${restockCoffeeInput > 0 ? ' + ' : ''}${restockCoffeeGramsInput}g`
+                    : ''}
+                  （共 {restockCoffeeTotalGrams}g）
+                </span>
               </div>
             )}
             {restockMilkTotalMl > 0 && (
               <div className='restock-total-row'>
                 <span>🥛 牛奶</span>
-                <span>+{restockMilkInput > 0 ? `${restockMilkInput} 瓶` : ''}{restockMilkMlInput > 0 ? `${restockMilkInput > 0 ? ' + ' : ''}${restockMilkMlInput}ml` : ''}（共 {restockMilkTotalMl}ml）</span>
+                <span>
+                  +{restockMilkInput > 0 ? `${restockMilkInput} 瓶` : ''}
+                  {restockMilkMlInput > 0
+                    ? `${restockMilkInput > 0 ? ' + ' : ''}${restockMilkMlInput}ml`
+                    : ''}
+                  （共 {restockMilkTotalMl}ml）
+                </span>
               </div>
             )}
           </div>
@@ -545,7 +571,8 @@ export function InventoryTab({
           </div>
           {coffeeUsedGrams !== null && (
             <div className='inv-usage-hint'>
-              本日用量：約 {(coffeeUsedGrams / COFFEE_GRAMS_PER_BAG).toFixed(1)} 包（
+              本日用量：約 {(coffeeUsedGrams / COFFEE_GRAMS_PER_BAG).toFixed(1)}{' '}
+              包（
               {coffeeUsedGrams}g）
             </div>
           )}
@@ -581,13 +608,14 @@ export function InventoryTab({
           </div>
           {milkUsedMl !== null && (
             <div className='inv-usage-hint'>
-              本日用量：約 {(milkUsedMl / MILK_ML_PER_BOTTLE).toFixed(1)} 瓶（{milkUsedMl}ml）
+              本日用量：約 {(milkUsedMl / MILK_ML_PER_BOTTLE).toFixed(1)} 瓶（
+              {milkUsedMl}ml）
             </div>
           )}
         </div>
 
         {/* 建議補貨 */}
-        {suggestion && (
+        {/* {suggestion && (
           <div className='suggestion-box'>
             <div className='suggestion-title'>💡 下次建議攜帶</div>
             <div className='suggestion-row'>
@@ -603,7 +631,7 @@ export function InventoryTab({
               </span>
             </div>
           </div>
-        )}
+        )} */}
 
         <button
           className='btn full'

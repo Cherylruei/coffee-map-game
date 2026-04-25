@@ -12,7 +12,9 @@ import { WalletBalance } from './components/Wallet/WalletBalance';
 import { WalletTransferModal } from './components/Wallet/WalletTransferModal';
 import { WalletTransferClaimModal } from './components/Wallet/WalletTransferClaimModal';
 import { TransactionHistory } from './components/Wallet/TransactionHistory';
+import { Dialog } from './components/UI/Dialog';
 import { useAuthStore } from './hooks/useAuth';
+import { useDialog } from './hooks/useDialog';
 import { supabase } from './utils/supabase';
 import { useCollectionStore } from './hooks/useCollection';
 import { useWalletStore } from './hooks/useWallet';
@@ -46,6 +48,7 @@ const PENDING_QR_KEY = 'pending_qr_code';
 
 function App() {
   const { isAuthenticated, setAuth, user } = useAuthStore();
+  const showDialog = useDialog();
   const {
     collection,
     shareTokens,
@@ -113,12 +116,12 @@ function App() {
       const response = await gachaAPI.pull(pendingQR);
       if (response.data.success) {
         setDrawChances(response.data.drawChances);
-        alert(`🎉 ${response.data.message}`);
+        showDialog({ type: 'success', title: response.data.message });
       }
     } catch (error) {
       const msg = (error as { response?: { data?: { message?: string } } })
         .response?.data?.message;
-      alert(msg || '兌換失敗，請稍後再試');
+      showDialog({ type: 'error', title: msg || '兌換失敗，請稍後再試' });
     }
   };
 
@@ -188,7 +191,7 @@ function App() {
           }
         } catch (error) {
           console.error('LINE Login 失敗:', error);
-          alert('登入失敗，請稍後再試');
+          showDialog({ type: 'error', title: '登入失敗，請稍後再試' });
         }
       })();
     } else if (shareCode && isAuthenticated) {
@@ -207,7 +210,7 @@ function App() {
           }
         } catch (error: any) {
           console.error('領取分享失敗:', error);
-          alert(error.response?.data?.message || '領取失敗，請稍後再試');
+          showDialog({ type: 'error', title: error.response?.data?.message || '領取失敗，請稍後再試' });
           window.history.replaceState({}, document.title, '/');
         }
       })();
@@ -265,7 +268,7 @@ function App() {
         setWalletBalance(response.data.newWalletBalance);
       }
       setShowScanner(false);
-      alert(`🎉 ${response.data.message}`);
+      showDialog({ type: 'success', title: response.data.message });
     }
   };
 
@@ -286,7 +289,7 @@ function App() {
       };
 
       if (!info?.success) {
-        alert(info?.message || 'QR Code 無效或已過期');
+        showDialog({ type: 'warning', title: info?.message || 'QR Code 無效或已過期' });
         return;
       }
 
@@ -297,9 +300,15 @@ function App() {
           setWalletBalance(topupRes.data.newBalance);
           trackWalletTopup(topupRes.data.amount);
           setShowScanner(false);
-          alert(`💰 ${topupRes.data.message}`);
+          showDialog({
+            type: 'success',
+            title: topupRes.data.message,
+          });
         } else {
-          alert(topupRes.data?.message || '儲值失敗');
+          showDialog({
+            type: 'error',
+            title: topupRes.data?.message || '儲值失敗',
+          });
         }
         return;
       }
@@ -317,7 +326,7 @@ function App() {
     } catch (error: any) {
       trackQRScan('error');
       const msg = error.response?.data?.message || '兌換失敗，請稍後再試';
-      alert(msg);
+      showDialog({ type: 'error', title: msg });
     } finally {
       // 開啟彈窗時保持鎖定，其餘情況皆解鎖
       if (!openedModal) qrCodeProcessing = false;
@@ -332,7 +341,7 @@ function App() {
       await redeemGachaQR(walletPaymentPending.code);
     } catch (error: any) {
       trackQRScan('error');
-      alert(error.response?.data?.message || '付款失敗，請稍後再試');
+      showDialog({ type: 'error', title: error.response?.data?.message || '付款失敗，請稍後再試' });
     } finally {
       setWalletPaymentLoading(false);
       setWalletPaymentPending(null);
@@ -376,7 +385,7 @@ function App() {
         setDrawChances(0);
         setShowNoChancesModal(true);
       } else {
-        alert(error.response?.data?.message || '抽卡失敗，請稍後再試');
+        showDialog({ type: 'error', title: error.response?.data?.message || '抽卡失敗，請稍後再試' });
       }
       setDrawingInProgress(false);
     }
@@ -553,7 +562,10 @@ function App() {
           onClose={() => setPendingClaimToken(null)}
           onClaimed={(amount: number) => {
             fetchBalance();
-            alert(`🎉 成功收到 $${amount} 儲值金！`);
+            showDialog({
+              type: 'success',
+              title: `成功收到 $${amount} 儲值金！`,
+            });
             setPendingClaimToken(null);
           }}
         />
@@ -567,6 +579,9 @@ function App() {
           window.history.replaceState({}, document.title, '/');
         }}
       />
+
+      {/* 全域確認對話方塊 */}
+      <Dialog />
     </div>
   );
 }
