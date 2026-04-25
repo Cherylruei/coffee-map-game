@@ -72,3 +72,8 @@ export function trackShareCardClaimed(cardId: number, isNewCard: boolean): void 
 export function trackWalletTopup(amount: number): void {
   safeGtag('topup_complete', { amount })
 }
+
+// 查看消費紀錄頁
+export function trackViewTransactionHistory(): void {
+  safeGtag('view_transaction_history', {})
+}

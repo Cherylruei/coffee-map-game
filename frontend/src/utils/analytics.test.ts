@@ -8,6 +8,7 @@ import {
   trackSignUp,
   trackShareCardClaimed,
   trackWalletTopup,
+  trackViewTransactionHistory,
 } from './analytics'
 
 describe('analytics', () => {
@@ -184,6 +185,21 @@ describe('analytics', () => {
 
     it('does not throw when gtag is not loaded', () => {
       expect(() => trackWalletTopup(100)).not.toThrow()
+    })
+  })
+
+  describe('trackViewTransactionHistory', () => {
+    it('calls gtag with view_transaction_history event', () => {
+      const mockGtag = vi.fn()
+      vi.stubGlobal('gtag', mockGtag)
+
+      trackViewTransactionHistory()
+
+      expect(mockGtag).toHaveBeenCalledWith('event', 'view_transaction_history', {})
+    })
+
+    it('does not throw when gtag is not loaded', () => {
+      expect(() => trackViewTransactionHistory()).not.toThrow()
     })
   })
 })
