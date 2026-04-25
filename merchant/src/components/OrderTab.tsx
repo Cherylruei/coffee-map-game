@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDialog } from '../context/DialogContext';
 import {
   MenuData,
   MenuItem,
@@ -26,6 +27,7 @@ export function OrderTab({
   onQRViewerChange,
   menuRefreshSignal,
 }: Props) {
+  const showDialog = useDialog();
   const [menuData, setMenuData] = useState<MenuData | null>(null);
   const [menuError, setMenuError] = useState(false);
   const [orderItems, setOrderItems] = useState<Record<string, number>>({});
@@ -81,7 +83,7 @@ export function OrderTab({
 
   async function openQRViewer() {
     if (qrCups === 0) {
-      alert('請至少點一杯咖啡（客製項不產生 QR Code）');
+      showDialog({ type: 'warning', title: '請至少點一杯咖啡（客製項不產生 QR Code）' });
       return;
     }
     setGenerating(true);
@@ -93,7 +95,10 @@ export function OrderTab({
         qty: orderItems[item.id],
       }));
 
-    const body: Record<string, unknown> = { cupCount: qrCups, expiresInDays: 30 };
+    const body: Record<string, unknown> = {
+      cupCount: qrCups,
+      expiresInDays: 30,
+    };
     if (paymentMethod === 'wallet' && finalAmount > 0) {
       body.walletAmount = finalAmount;
     }
@@ -154,17 +159,17 @@ export function OrderTab({
       console.log('訂單提交結果:', result);
 
       if (result && (result as any).success) {
-        alert('✅ 訂單已記錄');
+        showDialog({ type: 'success', title: '訂單已記錄' });
         onOrderCommitted();
         closeViewer();
       } else {
         const errorMsg = (result as any)?.message || '訂單記錄失敗，請稍後再試';
         console.error('訂單提交失敗:', result);
-        alert(`❌ ${errorMsg}`);
+        showDialog({ type: 'error', title: errorMsg });
       }
     } catch (error) {
       console.error('訂單提交錯誤:', error);
-      alert('❌ 訂單提交失敗，請確認網路連線');
+      showDialog({ type: 'error', title: '訂單提交失敗，請確認網路連線' });
     }
   }
 
@@ -216,40 +221,40 @@ export function OrderTab({
       {menuData.categories
         .filter((cat) => cat.items.some((i) => i.available))
         .map((cat) => (
-        <div key={cat.id}>
-          <div className='cat-title'>{cat.name}</div>
-          {cat.items
-            .filter((i) => i.available)
-            .map((item) => {
-              const qty = orderItems[item.id] || 0;
-              return (
-                <div key={item.id} className='menu-item'>
-                  <div className='item-info'>
-                    <div className='item-name'>{item.name}</div>
-                    <div className='item-price'>${item.price}</div>
+          <div key={cat.id}>
+            <div className='cat-title'>{cat.name}</div>
+            {cat.items
+              .filter((i) => i.available)
+              .map((item) => {
+                const qty = orderItems[item.id] || 0;
+                return (
+                  <div key={item.id} className='menu-item'>
+                    <div className='item-info'>
+                      <div className='item-name'>{item.name}</div>
+                      <div className='item-price'>${item.price}</div>
+                    </div>
+                    <div className='qty-ctrl'>
+                      <button
+                        className='qty-btn'
+                        onClick={() => changeQty(item.id, -1)}
+                      >
+                        －
+                      </button>
+                      <span className={`qty-num${qty > 0 ? ' positive' : ''}`}>
+                        {qty}
+                      </span>
+                      <button
+                        className='qty-btn'
+                        onClick={() => changeQty(item.id, 1)}
+                      >
+                        ＋
+                      </button>
+                    </div>
                   </div>
-                  <div className='qty-ctrl'>
-                    <button
-                      className='qty-btn'
-                      onClick={() => changeQty(item.id, -1)}
-                    >
-                      －
-                    </button>
-                    <span className={`qty-num${qty > 0 ? ' positive' : ''}`}>
-                      {qty}
-                    </span>
-                    <button
-                      className='qty-btn'
-                      onClick={() => changeQty(item.id, 1)}
-                    >
-                      ＋
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      ))}
+                );
+              })}
+          </div>
+        ))}
 
       {/* 折扣券 / 付款 / 員編 */}
       {totalCups > 0 && (
@@ -288,7 +293,7 @@ export function OrderTab({
                 className={`payment-btn${paymentMethod === 'wallet' ? ' active' : ''}`}
                 onClick={() => setPaymentMethod('wallet')}
               >
-                💰 錢包
+                💰 儲值金
               </button>
             </div>
           </div>
@@ -315,7 +320,11 @@ export function OrderTab({
             <>
               <div>
                 共 {totalCups} 杯・
-                {paymentMethod === 'cash' ? '現金' : paymentMethod === 'line_pay' ? 'LINE Pay' : '💰 錢包'}
+                {paymentMethod === 'cash'
+                  ? '現金'
+                  : paymentMethod === 'line_pay'
+                    ? 'LINE Pay'
+                    : '儲值金'}
               </div>
               <div className='total-amount'>
                 {discountNum > 0 ? (

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Order, OrderItem, MenuData, MenuItem, PaymentMethod } from '../types';
 import { api, API_BASE } from '../utils/api';
+import { useDialog } from '../context/DialogContext';
 
 interface Props {
   order: Order;
@@ -36,6 +37,7 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const showDialog = useDialog();
 
   const orderId = order.id;
 
@@ -71,7 +73,7 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
   async function handleSave() {
     if (!orderId) return;
     if (lines.length === 0) {
-      alert('請至少保留一個品項，若要刪除請使用「刪除訂單」');
+      showDialog({ type: 'warning', title: '請至少保留一個品項，若要刪除請使用「刪除訂單」' });
       return;
     }
     setSaving(true);
@@ -92,7 +94,7 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
     if (data && (data as any).success) {
       onSaved();
     } else {
-      alert('修改失敗，請稍後再試');
+      showDialog({ type: 'error', title: '修改失敗，請稍後再試' });
     }
   }
 
@@ -106,7 +108,7 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
     if (data && (data as any).success) {
       onDeleted();
     } else {
-      alert('刪除失敗，請稍後再試');
+      showDialog({ type: 'error', title: '刪除失敗，請稍後再試' });
     }
   }
 

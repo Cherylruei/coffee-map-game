@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { shareAPI, userAPI } from '../../utils/api';
 import { useAuthStore } from '../../hooks/useAuth';
 import { useCollectionStore } from '../../hooks/useCollection';
+import { useDialog } from '../../hooks/useDialog';
 import { CARDS } from '../../utils/cards';
 
 
@@ -13,6 +14,7 @@ interface ShareButtonProps {
 export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
   const { user } = useAuthStore();
   const { collection, pendingShares, shareTokens, setCollection, setShareTokens, setPendingShares } = useCollectionStore();
+  const showDialog = useDialog();
   const [shareUrl, setShareUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [cancellingCardId, setCancellingCardId] = useState<number | null>(null);
@@ -46,7 +48,7 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
       console.error('分享失敗:', error);
       // 分享失敗，重新加載最新數據
       await reloadCollection();
-      alert(error.response?.data?.message || '分享失敗，請稍後再試');
+      showDialog({ type: 'error', title: error.response?.data?.message || '分享失敗，請稍後再試' });
     } finally {
       setLoading(false);
     }
@@ -54,7 +56,7 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
 
   const handleWebShare = async () => {
     if (!shareUrl) {
-      alert('連結尚未生成');
+      showDialog({ type: 'warning', title: '連結尚未生成' });
       return;
     }
 
@@ -63,9 +65,9 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
       // 不支援時，提供複製連結的備選方案
       try {
         await navigator.clipboard.writeText(shareUrl);
-        alert('連結已複製到剪貼簿！');
+        showDialog({ type: 'success', title: '連結已複製到剪貼簿！' });
       } catch {
-        alert('無法複製連結，請手動複製');
+        showDialog({ type: 'error', title: '無法複製連結，請手動複製' });
       }
       return;
     }
@@ -84,7 +86,7 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
       // 用戶取消分享時不顯示錯誤
       if (error.name !== 'AbortError') {
         console.error('分享出錯:', error);
-        alert('分享失敗，請稍後再試');
+        showDialog({ type: 'error', title: '分享失敗，請稍後再試' });
       }
     }
   };
@@ -106,7 +108,7 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
       }
     } catch (error: any) {
       console.error('取消分享失敗:', error);
-      alert(error.response?.data?.message || '取消分享失敗，請稍後再試');
+      showDialog({ type: 'error', title: error.response?.data?.message || '取消分享失敗，請稍後再試' });
     } finally {
       setCancellingCardId(null);
     }

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { api, API_BASE } from '../utils/api';
+import { useDialog } from '../context/DialogContext';
 import type { MenuCategory, MenuItem } from '../types';
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -181,6 +182,7 @@ function MenuTabRoot({ sessionToken, onMenuSaved }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const showDialog = useDialog();
 
   useEffect(() => {
     fetch(`${API_BASE}/api/menu`)
@@ -279,7 +281,7 @@ function MenuTabRoot({ sessionToken, onMenuSaved }: Props) {
       setTimeout(() => setSaved(false), 2000);
       onMenuSaved?.();
     } else {
-      alert((res as any)?.message || '儲存失敗，請確認 Supabase settings 表已建立');
+      showDialog({ type: 'error', title: (res as any)?.message || '儲存失敗，請確認 Supabase settings 表已建立' });
     }
   }
 
