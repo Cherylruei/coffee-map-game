@@ -94,6 +94,7 @@ export default function App() {
         <div className={`panel${activeTab === 'menu' ? ' active' : ''}`}>
           <MenuTab sessionToken={sessionToken} onMenuSaved={triggerMenuRefresh} />
         </div>
+
       </div>
 
       {/* Tab Nav */}
