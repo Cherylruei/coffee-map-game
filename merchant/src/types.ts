@@ -57,6 +57,10 @@ export interface Order {
   qr_codes?: string[];
   createdAt?: string;
   created_at?: string;
+  customerName?: string | null;
+  customer_name?: string | null;
+  customerLineId?: string | null;
+  customer_line_id?: string | null;
 }
 
 export interface PendingOrder {

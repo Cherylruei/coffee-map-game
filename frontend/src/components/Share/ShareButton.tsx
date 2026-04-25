@@ -154,9 +154,33 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
           width: '100%',
           maxHeight: '80vh',
           overflowY: 'auto',
+          position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        <button
+          onClick={handleClose}
+          aria-label='關閉'
+          style={{
+            position: 'absolute',
+            top: '14px',
+            right: '14px',
+            background: 'rgba(0,0,0,0.08)',
+            border: 'none',
+            borderRadius: '50%',
+            width: '32px',
+            height: '32px',
+            fontSize: '18px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#555',
+            lineHeight: 1,
+          }}
+        >
+          ×
+        </button>
         <h2 style={{ margin: '0 0 20px 0' }}>分享卡片</h2>
         <p style={{ color: '#666', marginBottom: '20px' }}>
           剩餘分享次數: {shareTokens}/3
@@ -288,21 +312,6 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
           </>
         )}
 
-        <button
-          onClick={handleClose}
-          style={{
-            marginTop: '15px',
-            background: '#ccc',
-            color: '#333',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '10px 20px',
-            cursor: 'pointer',
-            width: '100%',
-          }}
-        >
-          關閉
-        </button>
       </div>
     </div>
   );

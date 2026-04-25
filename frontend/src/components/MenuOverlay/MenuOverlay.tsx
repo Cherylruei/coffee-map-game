@@ -159,15 +159,6 @@ export function MenuOverlay({ isOpen, onClose }: Props) {
             </div>
           ))}
 
-          {/* 客製化 */}
-          <div className='menu-custom'>
-            <div className='menu-custom-title'>➕ 客製化選項</div>
-            <div className='menu-custom-item'>
-              • Double Shot &nbsp;
-              <span className='menu-custom-price'>+$15</span>
-            </div>
-          </div>
-
           <hr className='menu-divider' />
 
           {/* 提示 */}

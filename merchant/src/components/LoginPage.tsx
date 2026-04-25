@@ -58,7 +58,9 @@ export function LoginPage({ onLogin }: Props) {
   }
 
   function lineLogin() {
-    const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname);
+    const redirectUri = encodeURIComponent(
+      window.location.origin + window.location.pathname,
+    );
     window.location.href =
       `https://access.line.me/oauth2/v2.1/authorize?` +
       `response_type=code&client_id=${LINE_CHANNEL_ID}` +
@@ -97,24 +99,34 @@ export function LoginPage({ onLogin }: Props) {
   }
 
   return (
-    <div className="login-overlay">
-      <div className="login-box">
+    <div className='login-overlay'>
+      <div className='login-box'>
         <h2>☕ 商家後台</h2>
 
         {/* Step 1: LINE */}
         {step === 'line' && (
           <>
             <p>請先用 LINE 登入，以記錄當班員工</p>
-            <button className="line-btn" onClick={lineLogin}>
-              <svg viewBox="0 0 24 24" fill="white">
-                <path d="M12 2C6.477 2 2 6.124 2 11.204c0 4.561 3.618 8.373 8.5 9.083v-6.425H8.266v-2.658H10.5V9.47c0-2.2 1.31-3.416 3.316-3.416.95 0 1.944.17 1.944.17v2.14h-1.095c-1.08 0-1.415.67-1.415 1.357v1.63h2.406l-.385 2.657H13.25V20.3C18.159 19.614 22 15.8 22 11.204 22 6.124 17.523 2 12 2" />
+            <button className='line-btn' onClick={lineLogin}>
+              <svg viewBox='0 0 24 24' fill='white'>
+                <path d='M12 2C6.477 2 2 6.124 2 11.204c0 4.561 3.618 8.373 8.5 9.083v-6.425H8.266v-2.658H10.5V9.47c0-2.2 1.31-3.416 3.316-3.416.95 0 1.944.17 1.944.17v2.14h-1.095c-1.08 0-1.415.67-1.415 1.357v1.63h2.406l-.385 2.657H13.25V20.3C18.159 19.614 22 15.8 22 11.204 22 6.124 17.523 2 12 2' />
               </svg>
               用 LINE 登入
             </button>
-            <div className="skip-line">
+            {/* <div className="skip-line">
               <a onClick={skipLine}>略過，直接輸入密碼</a>
-            </div>
-            {lineError && <div style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: 10 }}>{lineError}</div>}
+            </div> */}
+            {lineError && (
+              <div
+                style={{
+                  color: 'var(--danger)',
+                  fontSize: '0.82rem',
+                  marginTop: 10,
+                }}
+              >
+                {lineError}
+              </div>
+            )}
           </>
         )}
 
@@ -122,31 +134,43 @@ export function LoginPage({ onLogin }: Props) {
         {step === 'password' && (
           <>
             {staffInfo && (
-              <div className="staff-greeting">
-                {staffInfo.picture && <img src={staffInfo.picture} alt="" />}
+              <div className='staff-greeting'>
+                {staffInfo.picture && <img src={staffInfo.picture} alt='' />}
                 <div>
-                  <div className="name">{staffInfo.name}</div>
-                  <div className="sub">已驗證 LINE 身份，請輸入密碼</div>
+                  <div className='name'>{staffInfo.name}</div>
+                  <div className='sub'>已驗證 LINE 身份，請輸入密碼</div>
                 </div>
               </div>
             )}
-            <form onSubmit={e => { e.preventDefault(); login(); }}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                login();
+              }}
+            >
               <input
                 ref={passwordRef}
-                className="login-input"
-                type="password"
-                placeholder="工作人員密碼"
+                className='login-input'
+                type='password'
+                placeholder='工作人員密碼'
                 value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete="current-password"
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete='current-password'
               />
-              <button className="btn full" type="submit" disabled={loading}>
+              <button className='btn full' type='submit' disabled={loading}>
                 {loading ? '驗證中…' : '進入後台'}
               </button>
             </form>
-            <div className="login-error">{loginError}</div>
+            <div className='login-error'>{loginError}</div>
             <div style={{ textAlign: 'center', marginTop: 12 }}>
-              <a style={{ color: 'var(--muted)', fontSize: '0.78rem', cursor: 'pointer' }} onClick={() => setStep('line')}>
+              <a
+                style={{
+                  color: 'var(--muted)',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setStep('line')}
+              >
                 ← 重新 LINE 登入
               </a>
             </div>
