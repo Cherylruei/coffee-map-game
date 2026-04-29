@@ -67,9 +67,15 @@ function computeSummary(orders: Order[]) {
   let totalRevenue = 0,
     cashAmount = 0,
     linePayAmount = 0,
+    walletOrderAmount = 0,
+    unsetAmount = 0,
     cashCount = 0,
     linePayCount = 0,
-    totalCups = 0;
+    walletOrderCount = 0,
+    unsetCount = 0,
+    totalCups = 0,
+    rewardRedeemedCups = 0,
+    rewardDiscountTotal = 0;
   const itemMap: Record<string, number> = {};
   for (const o of orders) {
     const amount = (o.total_amount ?? o.totalAmount ?? 0) as number;
@@ -78,13 +84,25 @@ function computeSummary(orders: Order[]) {
     if (pm === 'line_pay') {
       linePayCount++;
       linePayAmount += amount;
-    } else {
+    } else if (pm === 'wallet') {
+      walletOrderCount++;
+      walletOrderAmount += amount;
+    } else if (pm === 'cash') {
       cashCount++;
       cashAmount += amount;
+    } else {
+      unsetCount++;
+      unsetAmount += amount;
     }
     for (const item of o.items ?? []) {
       totalCups += item.qty;
       itemMap[item.name] = (itemMap[item.name] || 0) + item.qty;
+    }
+
+    const rewardCode = o.reward_code ?? o.rewardCode;
+    if (rewardCode) {
+      rewardRedeemedCups += 1;
+      rewardDiscountTotal += (o.reward_discount ?? o.rewardDiscount ?? 0) as number;
     }
   }
   const topItems = Object.entries(itemMap)
@@ -95,9 +113,15 @@ function computeSummary(orders: Order[]) {
     totalRevenue,
     cashAmount,
     linePayAmount,
+    walletOrderAmount,
+    unsetAmount,
     cashCount,
     linePayCount,
+    walletOrderCount,
+    unsetCount,
     totalCups,
+    rewardRedeemedCups,
+    rewardDiscountTotal,
     topItems,
   };
 }
@@ -150,10 +174,11 @@ function periodToDateRange(period: Period): { start?: string; end?: string } {
   return {};
 }
 
-function paymentLabel(method: string | undefined): string {
+function paymentLabel(method: string | null | undefined): string {
   if (method === 'line_pay') return 'LINE Pay';
   if (method === 'wallet') return '儲值金';
-  return '現金';
+  if (method === 'cash') return '現金';
+  return '未選擇';
 }
 
 function exportCSV(
@@ -385,6 +410,10 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
             <div className='num'>{summary.totalCups}</div>
             <div className='lbl'>總杯數</div>
           </div>
+          <div className='stat'>
+            <div className='num'>{summary.rewardRedeemedCups}</div>
+            <div className='lbl'>地圖兌換杯數</div>
+          </div>
           <div className='stat' style={{ gridColumn: 'span 2' }}>
             <div className='num' style={{ color: '#2e7d32' }}>
               ${topupSummary.total.toLocaleString()}
@@ -416,9 +445,27 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
               </span>
             </div>
             <div className='inv-breakdown-row'>
-              <span>💰 儲值金</span>
+              <span>💰 儲值金付款</span>
+              <span>
+                {summary.walletOrderCount} 筆・${summary.walletOrderAmount.toLocaleString()}
+              </span>
+            </div>
+            <div className='inv-breakdown-row'>
+              <span>⏺ 未選擇付款</span>
+              <span>
+                {summary.unsetCount} 筆・${summary.unsetAmount.toLocaleString()}
+              </span>
+            </div>
+            <div className='inv-breakdown-row'>
+              <span>🏦 儲值入帳</span>
               <span>
                 {topupSummary.count} 筆・${topupSummary.total.toLocaleString()}
+              </span>
+            </div>
+            <div className='inv-breakdown-row'>
+              <span>🎁 集滿兌換</span>
+              <span>
+                {summary.rewardRedeemedCups} 杯・折抵 ${summary.rewardDiscountTotal.toLocaleString()}
               </span>
             </div>
           </div>
@@ -494,12 +541,16 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
               .join('・');
             const total = order.totalAmount ?? order.total_amount ?? '—';
             const discount = order.discount ?? 0;
+            const rewardDisc = order.rewardDiscount ?? order.reward_discount ?? 0;
+            const manualDiscount = Math.max(0, (discount as number) - (rewardDisc as number));
             const payment = paymentLabel(order.paymentMethod ?? order.payment_method);
             const staff = order.staffName ?? order.staff_name ?? '未知員工';
             const at = fmtDate(order.createdAt ?? order.created_at);
             const qrCount = (order.qrCodes ?? order.qr_codes ?? []).length;
             const custName = order.customerName ?? order.customer_name;
             const empId = order.employeeId ?? order.employee_id;
+            const rewardCode = order.rewardCode ?? order.reward_code;
+            const rewardItemName = order.rewardItemName ?? order.reward_item_name;
             return (
               <div key={i} className='order-record'>
                 <div className='or-header'>
@@ -517,12 +568,17 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
                 <div className='or-items'>{itemsStr || '無品項資料'}</div>
                 <div className='or-total'>
                   合計 ${total}
-                  {(discount as number) > 0 && (
+                  {manualDiscount > 0 && (
                     <span style={{ color: 'var(--danger)', marginLeft: 6 }}>
-                      －${discount}
+                      －${manualDiscount}
                     </span>
                   )}
                   ・{payment}・{qrCount} 張 QR
+                  {rewardCode ? (
+                    <span style={{ marginLeft: 6, color: '#2e7d32' }}>
+                      來源：兌換券・{rewardItemName || '免費飲品'}・{rewardCode}
+                    </span>
+                  ) : null}
                   {custName ? (
                     <span style={{ marginLeft: 6, color: 'var(--accent)' }}>
                       👤 {custName}
@@ -536,6 +592,41 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
               </div>
             );
           })
+        )}
+      </div>
+
+      {/* 已核銷兌換碼列表 */}
+      <div className='card'>
+        <h2>🎟 已核銷兌換碼</h2>
+        {orders.filter((order) => (order.rewardCode ?? order.reward_code)).length === 0 ? (
+          <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+            尚無集滿兌換核銷紀錄
+          </p>
+        ) : (
+          orders
+            .filter((order) => (order.rewardCode ?? order.reward_code))
+            .slice(0, 20)
+            .map((order, index) => {
+              const rewardCode = order.rewardCode ?? order.reward_code ?? '—';
+              const rewardItemName = order.rewardItemName ?? order.reward_item_name ?? '免費飲品';
+              const staff = order.staffName ?? order.staff_name ?? '未知員工';
+              const customer = order.customerName ?? order.customer_name ?? '未知顧客';
+              const payment = paymentLabel(order.paymentMethod ?? order.payment_method);
+              return (
+                <div key={`${rewardCode}-${index}`} className='order-record'>
+                  <div className='or-header'>
+                    <span className='or-staff'>{rewardCode}</span>
+                    <span className='or-time'>{fmtDate(order.createdAt ?? order.created_at)}</span>
+                  </div>
+                  <div className='or-items'>
+                    {rewardItemName}・核銷人 {customer}
+                  </div>
+                  <div className='or-total'>
+                    來源：兌換券・店員 {staff}・付款 {payment}
+                  </div>
+                </div>
+              );
+            })
         )}
       </div>
 

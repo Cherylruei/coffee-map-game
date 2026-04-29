@@ -79,10 +79,10 @@ const gachaPullLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// 每個用戶每分鐘最多 30 次抽卡（一次最多就這樣）
+// 每個用戶每分鐘最多 15 次抽卡（一次最多就這樣）
 const gachaDrawLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  max: 15,
   keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
@@ -131,6 +131,11 @@ const CARD_WEIGHTS = {
   12: 16.6,
 };
 
+const TOTAL_COLLECTION_CARDS = 12;
+const REWARD_CODE_PREFIX = 'COF';
+const REWARD_CODE_EXPIRES_DAYS = 30;
+const REWARD_TYPE_FREE_DRINK = 'collection_free_drink';
+
 function pullCard() {
   const totalWeight = Object.values(CARD_WEIGHTS).reduce(
     (sum, w) => sum + w,
@@ -142,6 +147,52 @@ function pullCard() {
     if (random <= 0) return parseInt(cardId);
   }
   return 12;
+}
+
+function generateRewardCode() {
+  return `${REWARD_CODE_PREFIX}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
+function buildRewardExpiryDate() {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + REWARD_CODE_EXPIRES_DAYS);
+  return expiresAt.toISOString();
+}
+
+async function getCollectedCardCount(userId) {
+  const { data, error } = await supabase
+    .from('collection')
+    .select('card_id, count')
+    .eq('user_id', userId)
+    .gt('count', 0);
+
+  if (error) throw error;
+
+  return new Set((data || []).map((item) => item.card_id)).size;
+}
+
+async function getRewardCodeWithUser(code) {
+  const { data: rewardCode, error } = await supabase
+    .from('collection_reward_codes')
+    .select('*')
+    .eq('code', code)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!rewardCode) return null;
+
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('display_name, line_user_id')
+    .eq('id', rewardCode.user_id)
+    .maybeSingle();
+
+  if (userError) throw userError;
+
+  return {
+    rewardCode,
+    user,
+  };
 }
 
 // JWT 驗證中間件（一般用戶）
@@ -320,6 +371,121 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Get collection error:', error);
     res.status(500).json({ success: false, message: '取得收藏失敗' });
+  }
+});
+
+// 2.1 產生或取回集滿兌換碼
+app.post('/api/user/redeem-code', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const nowIso = new Date().toISOString();
+
+    const { error: expireError } = await supabase
+      .from('collection_reward_codes')
+      .update({ status: 'cancelled' })
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .lt('expires_at', nowIso);
+    if (expireError) throw expireError;
+
+    const { data: redeemedReward, error: redeemedError } = await supabase
+      .from('collection_reward_codes')
+      .select('code, redeemed_at')
+      .eq('user_id', userId)
+      .eq('reward_type', REWARD_TYPE_FREE_DRINK)
+      .eq('status', 'redeemed')
+      .order('redeemed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (redeemedError) throw redeemedError;
+
+    if (redeemedReward) {
+      return res.status(200).json({
+        success: true,
+        message: '恭喜破關! 飲品已兌換完成',
+        isAlreadyRedeemed: true,
+        redeemedAt: redeemedReward.redeemed_at,
+      });
+    }
+
+    const { data: existingReward, error: existingError } = await supabase
+      .from('collection_reward_codes')
+      .select('code, expires_at, created_at, status')
+      .eq('user_id', userId)
+      .eq('reward_type', REWARD_TYPE_FREE_DRINK)
+      .eq('status', 'pending')
+      .gte('expires_at', nowIso)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    if (existingReward) {
+      return res.json({
+        success: true,
+        message: '此帳號已有尚未使用的兌換碼，核銷前不會重新發碼',
+        rewardCode: {
+          code: existingReward.code,
+          expiresAt: existingReward.expires_at,
+          status: existingReward.status,
+          rewardType: REWARD_TYPE_FREE_DRINK,
+        },
+        alreadyIssued: true,
+      });
+    }
+
+    const collectedCardCount = await getCollectedCardCount(userId);
+    if (collectedCardCount < TOTAL_COLLECTION_CARDS) {
+      return res.status(400).json({
+        success: false,
+        message: `尚未集滿 ${TOTAL_COLLECTION_CARDS} 張卡片`,
+      });
+    }
+
+    let createdReward = null;
+    let lastError = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const nextCode = generateRewardCode();
+      const { data, error } = await supabase
+        .from('collection_reward_codes')
+        .insert({
+          code: nextCode,
+          user_id: userId,
+          reward_type: REWARD_TYPE_FREE_DRINK,
+          status: 'pending',
+          expires_at: buildRewardExpiryDate(),
+        })
+        .select('code, expires_at, status')
+        .single();
+
+      if (!error) {
+        createdReward = data;
+        break;
+      }
+
+      lastError = error;
+      if (error.code !== '23505') {
+        throw error;
+      }
+    }
+
+    if (!createdReward) {
+      throw lastError || new Error('建立兌換碼失敗');
+    }
+
+    res.json({
+      success: true,
+      rewardCode: {
+        code: createdReward.code,
+        expiresAt: createdReward.expires_at,
+        status: createdReward.status,
+        rewardType: REWARD_TYPE_FREE_DRINK,
+      },
+      alreadyIssued: false,
+    });
+  } catch (error) {
+    console.error('Create redeem code error:', error);
+    res.status(500).json({ success: false, message: '建立兌換碼失敗' });
   }
 });
 
@@ -787,6 +953,42 @@ app.post('/api/admin/line-login', async (req, res) => {
 
 // 10. 記錄點單
 // 10. 記錄點單
+app.post('/api/admin/redeem-code/preview', authenticateAdmin, async (req, res) => {
+  try {
+    const rawCode = typeof req.body?.code === 'string' ? req.body.code.trim().toUpperCase() : '';
+    if (!rawCode.startsWith(`${REWARD_CODE_PREFIX}-`)) {
+      return res.status(400).json({ success: false, message: '兌換碼格式錯誤' });
+    }
+
+    const rewardPayload = await getRewardCodeWithUser(rawCode);
+    if (!rewardPayload) {
+      return res.status(404).json({ success: false, message: '查無此兌換碼' });
+    }
+
+    const { rewardCode, user } = rewardPayload;
+    if (rewardCode.status !== 'pending') {
+      return res.status(409).json({ success: false, message: '此兌換碼已核銷或失效' });
+    }
+    if (new Date(rewardCode.expires_at).getTime() <= Date.now()) {
+      return res.status(409).json({ success: false, message: '此兌換碼已過期' });
+    }
+
+    res.json({
+      success: true,
+      rewardCode: {
+        code: rewardCode.code,
+        rewardType: rewardCode.reward_type,
+        expiresAt: rewardCode.expires_at,
+        customerName: user?.display_name || null,
+        customerLineId: user?.line_user_id || null,
+      },
+    });
+  } catch (error) {
+    console.error('Redeem code preview error:', error);
+    res.status(500).json({ success: false, message: '兌換碼驗證失敗' });
+  }
+});
+
 app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
   try {
     const {
@@ -798,6 +1000,8 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
       paymentMethod,
       employeeId,
       qrCodes,
+      rewardCode,
+      rewardItemName,
     } = req.body;
 
     console.log('📝 接收訂單:', {
@@ -810,6 +1014,17 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: '訂單項目不能為空' });
     }
+
+    const manualDiscount = Math.max(0, Number(discount) || 0);
+    const subtotalAmount = items.reduce(
+      (sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 0),
+      0,
+    );
+
+    let rewardCodeRow = null;
+    let rewardDiscount = 0;
+    let normalizedRewardCode = null;
+    let normalizedRewardItemName = null;
 
     // 查詢 QR code 是否已被顧客掃描，若有則取得 LINE 身分
     let customerName = null;
@@ -833,19 +1048,65 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
       }
     }
 
+    if (rewardCode) {
+      normalizedRewardCode = String(rewardCode).trim().toUpperCase();
+      normalizedRewardItemName = typeof rewardItemName === 'string'
+        ? rewardItemName.trim()
+        : '';
+
+      if (!normalizedRewardItemName) {
+        return res.status(400).json({ success: false, message: '請選擇兌換飲品' });
+      }
+
+      const rewardPayload = await getRewardCodeWithUser(normalizedRewardCode);
+      if (!rewardPayload) {
+        return res.status(404).json({ success: false, message: '查無此兌換碼' });
+      }
+
+      rewardCodeRow = rewardPayload.rewardCode;
+      if (rewardCodeRow.status !== 'pending') {
+        return res.status(409).json({ success: false, message: '此兌換碼已核銷或失效' });
+      }
+      if (new Date(rewardCodeRow.expires_at).getTime() <= Date.now()) {
+        return res.status(409).json({ success: false, message: '此兌換碼已過期' });
+      }
+
+      const matchedItem = items.find(
+        (item) => item.name === normalizedRewardItemName && Number(item.qty) > 0,
+      );
+      if (!matchedItem) {
+        return res.status(400).json({ success: false, message: '兌換飲品不在本次訂單中' });
+      }
+
+      rewardDiscount = Math.max(0, Number(matchedItem.price) || 0);
+      if (rewardDiscount === 0) {
+        return res.status(400).json({ success: false, message: '兌換飲品金額無效' });
+      }
+
+      if (!customerName) customerName = rewardPayload.user?.display_name ?? null;
+      if (!customerLineId) customerLineId = rewardPayload.user?.line_user_id ?? null;
+    }
+
+    const totalDiscount = manualDiscount + rewardDiscount;
+    const finalAmount = Math.max(0, subtotalAmount - totalDiscount);
+
     const { data, error } = await supabase
       .from('orders')
       .insert({
         staff_line_id: staffLineId || null,
         staff_name: staffName || '未知員工',
         items,
-        total_amount: totalAmount,
-        discount: discount || 0,
-        payment_method: paymentMethod || 'cash',
+        total_amount: finalAmount,
+        discount: totalDiscount,
+        payment_method: paymentMethod || null,
         employee_id: employeeId || null,
         qr_codes: qrCodes || [],
         customer_name: customerName,
         customer_line_id: customerLineId,
+        reward_code: normalizedRewardCode,
+        reward_type: rewardCodeRow?.reward_type || null,
+        reward_discount: rewardDiscount,
+        reward_item_name: normalizedRewardItemName,
       })
       .select()
       .single();
@@ -853,6 +1114,28 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
     if (error) {
       console.error('❌ Supabase 插入錯誤:', error);
       throw error;
+    }
+
+    if (normalizedRewardCode) {
+      const { data: updatedReward, error: rewardUpdateError } = await supabase
+        .from('collection_reward_codes')
+        .update({
+          status: 'redeemed',
+          redeemed_at: new Date().toISOString(),
+          redeemed_order_id: data.id,
+          redeemed_by_staff_name: staffName || '未知員工',
+          redeem_discount: rewardDiscount,
+          selected_item_name: normalizedRewardItemName,
+        })
+        .eq('code', normalizedRewardCode)
+        .eq('status', 'pending')
+        .select('code')
+        .maybeSingle();
+
+      if (rewardUpdateError || !updatedReward) {
+        await supabase.from('orders').delete().eq('id', data.id);
+        return res.status(409).json({ success: false, message: '此兌換碼已被其他訂單使用' });
+      }
     }
 
     console.log('✅ 訂單已保存到 Supabase:', data?.id);
@@ -891,7 +1174,7 @@ app.put('/api/admin/order/:id', authenticateAdmin, async (req, res) => {
         items,
         total_amount: totalAmount,
         discount: discount ?? 0,
-        payment_method: paymentMethod || 'cash',
+        payment_method: paymentMethod || null,
         employee_id: employeeId || null,
       })
       .eq('id', id);
@@ -948,7 +1231,7 @@ app.get('/api/admin/stats/today', authenticateAdmin, async (req, res) => {
       if (order.payment_method === 'line_pay') {
         linePayCount++;
         linePayAmount += order.total_amount || 0;
-      } else {
+      } else if (order.payment_method === 'cash') {
         cashCount++;
         cashAmount += order.total_amount || 0;
       }
@@ -1670,7 +1953,7 @@ app.get('/api/admin/reports/monthly', authenticateAdmin, async (req, res) => {
       if (order.payment_method === 'line_pay') {
         linePayCount++;
         linePayAmount += amount;
-      } else {
+      } else if (order.payment_method === 'cash') {
         cashCount++;
         cashAmount += amount;
       }

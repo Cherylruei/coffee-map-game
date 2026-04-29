@@ -40,6 +40,7 @@ export interface OrderItem {
 }
 
 export type PaymentMethod = 'cash' | 'line_pay' | 'wallet';
+export type OptionalPaymentMethod = PaymentMethod | '' | null;
 
 export interface Order {
   id?: string;
@@ -49,8 +50,8 @@ export interface Order {
   totalAmount?: number;
   total_amount?: number;
   discount?: number;
-  paymentMethod?: PaymentMethod;
-  payment_method?: PaymentMethod;
+  paymentMethod?: OptionalPaymentMethod;
+  payment_method?: OptionalPaymentMethod;
   employeeId?: string;
   employee_id?: string;
   qrCodes?: string[];
@@ -61,6 +62,14 @@ export interface Order {
   customer_name?: string | null;
   customerLineId?: string | null;
   customer_line_id?: string | null;
+  rewardCode?: string | null;
+  reward_code?: string | null;
+  rewardType?: string | null;
+  reward_type?: string | null;
+  rewardDiscount?: number;
+  reward_discount?: number;
+  rewardItemName?: string | null;
+  reward_item_name?: string | null;
 }
 
 export interface PendingOrder {
@@ -69,10 +78,13 @@ export interface PendingOrder {
   items: OrderItem[];
   totalAmount: number;
   discount: number;
-  paymentMethod: PaymentMethod;
+  paymentMethod?: OptionalPaymentMethod;
   employeeId: string;
-  qrCode: string;
+  qrCode?: string | null;
   cupCount: number;
+  rewardCode?: string | null;
+  rewardItemName?: string | null;
+  rewardDiscount?: number;
 }
 
 export interface Stats {
@@ -81,6 +93,7 @@ export interface Stats {
   totalQRCodes: number;
   usedQRCodes: number;
   totalOrders?: number;
+  totalRewardRedemptions?: number;
 }
 
 export interface TodayStats {

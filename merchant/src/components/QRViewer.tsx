@@ -21,7 +21,13 @@ export function QRViewer({ qrCode, cupCount, pendingOrder, onCommit, onCancel }:
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const paymentLabel = pendingOrder?.paymentMethod === 'line_pay' ? 'LINE Pay' : '現金';
+  const paymentLabel = pendingOrder?.paymentMethod === 'line_pay'
+    ? 'LINE Pay'
+    : pendingOrder?.paymentMethod === 'wallet'
+      ? '儲值金'
+      : pendingOrder?.paymentMethod === 'cash'
+        ? '現金'
+        : '未選擇';
 
   return (
     <div className="qr-viewer">
