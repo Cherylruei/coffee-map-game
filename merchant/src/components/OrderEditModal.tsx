@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Order, OrderItem, MenuData, MenuItem, PaymentMethod } from '../types';
+import { Order, OrderItem, MenuData, MenuItem, OptionalPaymentMethod } from '../types';
 import { api, API_BASE } from '../utils/api';
 import { useDialog } from '../context/DialogContext';
 
@@ -30,8 +30,8 @@ function buildEditLines(items: OrderItem[]): EditLine[] {
 export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClose }: Props) {
   const [lines, setLines] = useState<EditLine[]>(buildEditLines(order.items || []));
   const [discount, setDiscount] = useState(String(order.discount ?? 0));
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    order.paymentMethod ?? order.payment_method ?? 'cash'
+  const [paymentMethod, setPaymentMethod] = useState<OptionalPaymentMethod>(
+    order.paymentMethod ?? order.payment_method ?? ''
   );
   const [menuData, setMenuData] = useState<MenuData | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -188,15 +188,21 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
               <div className="payment-btns">
                 <button
                   className={`payment-btn${paymentMethod === 'cash' ? ' active' : ''}`}
-                  onClick={() => setPaymentMethod('cash')}
+                  onClick={() => setPaymentMethod(prev => prev === 'cash' ? '' : 'cash')}
                 >
                   💵 現金
                 </button>
                 <button
                   className={`payment-btn${paymentMethod === 'line_pay' ? ' active' : ''}`}
-                  onClick={() => setPaymentMethod('line_pay')}
+                  onClick={() => setPaymentMethod(prev => prev === 'line_pay' ? '' : 'line_pay')}
                 >
                   💚 LINE Pay
+                </button>
+                <button
+                  className={`payment-btn${paymentMethod === 'wallet' ? ' active' : ''}`}
+                  onClick={() => setPaymentMethod(prev => prev === 'wallet' ? '' : 'wallet')}
+                >
+                  💰 儲值金
                 </button>
               </div>
             </div>

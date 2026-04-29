@@ -533,7 +533,7 @@ export function GachaTab({ sessionToken, onGenerated }: Props) {
                 whiteSpace: 'nowrap',
               }}
             >
-              {topupGenerating ? '生成中…' : '生成 QR'}
+              {topupGenerating ? '點單…' : '確認點單'}
             </button>
           </div>
 

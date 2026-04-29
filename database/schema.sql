@@ -69,6 +69,26 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_method VARCHAR(20) NOT NULL DEFAULT 'cash',  -- 'cash' | 'line_pay'
   employee_id VARCHAR(50),                       -- 顧客員編（選填）
   qr_codes TEXT[] NOT NULL DEFAULT '{}',
+  reward_code TEXT,
+  reward_type TEXT,
+  reward_discount INTEGER NOT NULL DEFAULT 0,
+  reward_item_name TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 6.1 建立集滿卡片兌換碼表
+CREATE TABLE IF NOT EXISTS collection_reward_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code VARCHAR(50) UNIQUE NOT NULL,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  reward_type VARCHAR(50) NOT NULL DEFAULT 'collection_free_drink',
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  redeemed_at TIMESTAMP WITH TIME ZONE,
+  redeemed_order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  redeemed_by_staff_name VARCHAR(100),
+  redeem_discount INTEGER NOT NULL DEFAULT 0,
+  selected_item_name VARCHAR(120),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -92,6 +112,8 @@ CREATE INDEX IF NOT EXISTS idx_qr_codes_code ON qr_codes(code);
 CREATE INDEX IF NOT EXISTS idx_qr_codes_used ON qr_codes(used);
 CREATE INDEX IF NOT EXISTS idx_shares_share_code ON shares(share_code);
 CREATE INDEX IF NOT EXISTS idx_shares_claimed ON shares(claimed);
+CREATE INDEX IF NOT EXISTS idx_collection_reward_codes_code ON collection_reward_codes(code);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_collection_reward_codes_pending_user ON collection_reward_codes(user_id) WHERE status = 'pending';
 
 -- 建立 updated_at 自動更新的觸發器
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -113,6 +135,7 @@ ALTER TABLE gacha_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE qr_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shares ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE collection_reward_codes ENABLE ROW LEVEL SECURITY;
 
 -- 使用者只能讀取自己的資料
 CREATE POLICY "Users can read own data" ON users
@@ -137,3 +160,4 @@ COMMENT ON TABLE collection IS '卡片收藏記錄表';
 COMMENT ON TABLE gacha_history IS '抽卡歷史記錄表';
 COMMENT ON TABLE qr_codes IS 'QR Code 管理表';
 COMMENT ON TABLE shares IS '分享記錄表';
+COMMENT ON TABLE collection_reward_codes IS '集滿卡片後的一次性免費飲品兌換碼';
