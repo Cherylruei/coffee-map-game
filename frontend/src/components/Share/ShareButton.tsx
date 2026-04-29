@@ -193,7 +193,7 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
             {/* 可分享的卡片 */}
             {shareableCards.length > 0 && (
               <>
-                <p style={{ marginBottom: '15px', fontWeight: 'bold' }}>
+                <p style={{ marginBottom: '15px', color: '#343232', fontWeight: 'bold' }}>
                   ✓ 可分享的卡片：
                 </p>
                 <div
@@ -207,6 +207,7 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
                       style={{
                         padding: '12px',
                         background: '#f0f0f0',
+                        color: '#333',
                         border: 'none',
                         borderRadius: '8px',
                         cursor: 'pointer',
@@ -281,10 +282,11 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
           </>
         ) : (
           <>
-            <p style={{ marginBottom: '15px' }}>🎉 分享連結已生成！</p>
+            <p style={{ marginBottom: '15px', color: '#333' }}>🎉 分享連結已生成！</p>
             <div
               style={{
                 background: '#f0f0f0',
+                color: '#333',
                 padding: '12px',
                 borderRadius: '8px',
                 marginBottom: '15px',

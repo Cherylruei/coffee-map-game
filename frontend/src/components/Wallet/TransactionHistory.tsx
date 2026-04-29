@@ -10,6 +10,7 @@ interface Transaction {
   note: string | null
   order_ref: string | null
   created_at: string
+  payment_method?: 'cash' | 'line' | 'line_pay' | 'wallet' | 'reward_code' | string | null
 }
 
 interface TransactionHistoryProps {
@@ -24,6 +25,22 @@ function formatDate(iso: string): string {
 
 function formatAmount(amount: number): string {
   return amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`
+}
+
+function getPaymentMethodLabel(paymentMethod?: string | null): string {
+  switch (paymentMethod) {
+    case 'line':
+    case 'line_pay':
+      return 'LINE Pay'
+    case 'cash':
+      return '現金'
+    case 'reward_code':
+      return '兌換碼'
+    case 'wallet':
+      return '儲值金'
+    default:
+      return '儲值金'
+  }
 }
 
 export function TransactionHistory({ isOpen, onClose }: TransactionHistoryProps) {
@@ -153,6 +170,7 @@ export function TransactionHistory({ isOpen, onClose }: TransactionHistoryProps)
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {transactions.map((tx) => {
                   const isPositive = tx.amount >= 0
+                  const paymentMethodLabel = getPaymentMethodLabel(tx.payment_method)
                   return (
                     <motion.li
                       key={tx.id}
@@ -172,6 +190,9 @@ export function TransactionHistory({ isOpen, onClose }: TransactionHistoryProps)
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                         <span style={{ color: '#e8e8e8', fontSize: '14px', fontWeight: 500 }}>
                           {tx.note ?? (isPositive ? '儲值' : '消費')}
+                        </span>
+                        <span style={{ color: '#b8b8b8', fontSize: '12px' }}>
+                          {isPositive ? '儲值來源' : '付款方式'}：{paymentMethodLabel}
                         </span>
                         <span style={{ color: '#888', fontSize: '12px' }}>
                           {formatDate(tx.created_at)}

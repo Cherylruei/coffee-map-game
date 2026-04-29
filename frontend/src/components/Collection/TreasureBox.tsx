@@ -2,11 +2,19 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CARDS, RARITY_COLORS } from '../../utils/cards';
 import { useCollectionStore } from '../../hooks/useCollection';
+import { api } from '../../utils/api';
 
 interface TreasureBoxProps {
   isOpen: boolean;
   onClose: () => void;
   lastCardId?: number | null;
+}
+
+interface RewardCodeState {
+  code: string;
+  expiresAt?: string;
+  rewardType: string;
+  status: string;
 }
 
 // Equirectangular projection: x=(lon+180)/360*100, y=(80-lat)/160*100
@@ -76,7 +84,7 @@ function CardPin({
   card: (typeof CARDS)[number];
   collected: boolean;
   count: number;
-  rStyle: (typeof RARITY_COLORS)[string];
+  rStyle: (typeof RARITY_COLORS)[keyof typeof RARITY_COLORS];
   onClick: () => void;
   delay: number;
 }) {
@@ -196,6 +204,13 @@ function CardPin({
 export function TreasureBox({ isOpen, onClose, lastCardId }: TreasureBoxProps) {
   const { collection } = useCollectionStore();
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [isRedeemModalOpen, setIsRedeemModalOpen] = useState(false);
+  const [rewardCode, setRewardCode] = useState<RewardCodeState | null>(null);
+  const [rewardCodeMessage, setRewardCodeMessage] = useState('');
+  const [rewardCodeError, setRewardCodeError] = useState('');
+  const [isRewardCodeLoading, setIsRewardCodeLoading] = useState(false);
+  const [isAlreadyRedeemed, setIsAlreadyRedeemed] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState('');
 
   // ── Pinch-zoom state ──
   const [transform, setTransform] = useState({ scale: 1, tx: 0, ty: 0 });
@@ -203,9 +218,9 @@ export function TreasureBox({ isOpen, onClose, lastCardId }: TreasureBoxProps) {
   // 開啟時設定初始縮放
   useEffect(() => {
     if (!isOpen) {
-      setTransform({ scale: 1, tx: 0, ty: 0 });
       return;
     }
+    let nextTransform = { scale: 1, tx: 0, ty: 0 };
     const vpW = window.innerWidth;
     const headerH = 72;   // header 實際高度
     const bottomPad = 50; // 距底部 sidebar 的安全距離
@@ -217,14 +232,34 @@ export function TreasureBox({ isOpen, onClose, lastCardId }: TreasureBoxProps) {
       const scale = 2.5;
       const pinPx = (pin.x / 100) * vpW * scale;
       const pinPy = (pin.y / 100) * vpW * (MAP_RATIO / 100) * scale;
-      setTransform(clampTransform(scale, vpW / 2 - pinPx, vpH / 2 - pinPy, vpW, vpH));
+      nextTransform = clampTransform(
+        scale,
+        vpW / 2 - pinPx,
+        vpH / 2 - pinPy,
+        vpW,
+        vpH,
+      );
     } else {
       // 預設：縮放至地圖填滿視窗高度（4/5 以上）
       const mapHeightAt1 = vpW * (MAP_RATIO / 100);
       const fitScale = clamp(vpH / mapHeightAt1, MIN_SCALE, MAX_SCALE);
       const mapW = vpW * fitScale;
-      setTransform(clampTransform(fitScale, Math.min(0, (vpW - mapW) / 2), 0, vpW, vpH));
+      nextTransform = clampTransform(
+        fitScale,
+        Math.min(0, (vpW - mapW) / 2),
+        0,
+        vpW,
+        vpH,
+      );
     }
+
+    const frame = window.requestAnimationFrame(() => {
+      setTransform(nextTransform);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
   }, [isOpen, lastCardId]);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -337,12 +372,145 @@ export function TreasureBox({ isOpen, onClose, lastCardId }: TreasureBoxProps) {
   const collectedCount = Object.keys(collection).filter(
     (k) => (collection[Number(k)] || 0) > 0,
   ).length;
+  const isCollectionComplete = collectedCount === totalCards;
 
   const selectedCard = selectedId ? CARDS[selectedId] : null;
   const selectedRarity = selectedCard
     ? RARITY_COLORS[selectedCard.rarity]
     : null;
   const selectedCount = selectedId ? collection[selectedId] || 0 : 0;
+
+  const loadRewardCode = useCallback(async () => {
+    if (!isCollectionComplete) return;
+
+    setIsRewardCodeLoading(true);
+    setRewardCodeError('');
+    setCopyFeedback('');
+
+    try {
+      const response = await api.post('/user/redeem-code');
+      const data = response.data as {
+        success: boolean;
+        message?: string;
+        alreadyIssued?: boolean;
+        isAlreadyRedeemed?: boolean;
+        rewardCode?: RewardCodeState;
+      };
+
+      if (!data.success) {
+        setRewardCode(null);
+        setRewardCodeMessage('');
+        setIsAlreadyRedeemed(false);
+        setRewardCodeError(data.message || '目前無法建立兌換碼');
+        return;
+      }
+
+      // 已經兌換完成
+      if (data.isAlreadyRedeemed) {
+        setRewardCode(null);
+        setRewardCodeMessage('');
+        setIsAlreadyRedeemed(true);
+        setRewardCodeError('');
+        return;
+      }
+
+      // 有兌換碼
+      if (data.rewardCode) {
+        setRewardCode(data.rewardCode);
+        setRewardCodeMessage(
+          data.alreadyIssued
+            ? '已為你保留尚未使用的兌換碼，核銷前不會重複發碼。'
+            : '兌換碼已建立，請於商家後台輸入後核銷。',
+        );
+        setIsAlreadyRedeemed(false);
+        setRewardCodeError('');
+        return;
+      }
+
+      // 其他情況
+      setRewardCode(null);
+      setRewardCodeMessage('');
+      setIsAlreadyRedeemed(false);
+      setRewardCodeError(data.message || '目前無法建立兌換碼');
+    } catch (error) {
+      const message =
+        (error as { response?: { data?: { message?: string } } }).response?.data
+          ?.message || '兌換碼建立失敗，請稍後再試';
+      setRewardCode(null);
+      setRewardCodeMessage('');
+      setIsAlreadyRedeemed(false);
+      setRewardCodeError(message);
+    } finally {
+      setIsRewardCodeLoading(false);
+    }
+  }, [isCollectionComplete]);
+
+  // 當集滿卡片時，檢查是否已兌換過（用於咖啡產地圖鑑區域的狀態顯示）
+  useEffect(() => {
+    if (!isCollectionComplete || isAlreadyRedeemed || isRewardCodeLoading) {
+      return;
+    }
+
+    // 主動檢查一次是否已兌換
+    const checkRedemptionStatus = async () => {
+      try {
+        const response = await api.post('/user/redeem-code');
+        const data = response.data as {
+          success: boolean;
+          isAlreadyRedeemed?: boolean;
+        };
+
+        if (data.isAlreadyRedeemed) {
+          setIsAlreadyRedeemed(true);
+        }
+      } catch {
+        // 錯誤時不做任何處理，讓用戶點按鈕時再檢查
+      }
+    };
+
+    checkRedemptionStatus();
+  }, [isCollectionComplete]);
+
+  useEffect(() => {
+    if (!isRedeemModalOpen || !isCollectionComplete || rewardCode || isRewardCodeLoading || isAlreadyRedeemed) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      loadRewardCode();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [
+    isCollectionComplete,
+    isRedeemModalOpen,
+    isRewardCodeLoading,
+    isAlreadyRedeemed,
+    loadRewardCode,
+    rewardCode,
+  ]);
+
+  function closeRedeemModal() {
+    setIsRedeemModalOpen(false);
+    setRewardCode(null);
+    setRewardCodeMessage('');
+    setRewardCodeError('');
+    setIsAlreadyRedeemed(false);
+    setCopyFeedback('');
+  }
+
+  async function copyRewardCode() {
+    if (!rewardCode?.code) return;
+
+    try {
+      await navigator.clipboard.writeText(rewardCode.code);
+      setCopyFeedback('已複製兌換碼');
+    } catch {
+      setCopyFeedback('複製失敗，請手動複製');
+    }
+  }
 
   return (
     <AnimatePresence>
@@ -366,7 +534,7 @@ export function TreasureBox({ isOpen, onClose, lastCardId }: TreasureBoxProps) {
             style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              justifyContent: 'space-evenly',
               padding: '16px 20px',
               background:
                 'linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%)',
@@ -386,9 +554,38 @@ export function TreasureBox({ isOpen, onClose, lastCardId }: TreasureBoxProps) {
               >
                 🗺️ 咖啡產地圖鑑
               </h2>
-              <p style={{ color: '#aaa', fontSize: '16px', margin: '3px 0 0' }}>
-                已收集 {collectedCount} / {totalCards} 張・雙指縮放精確點擊
-              </p>
+              {isAlreadyRedeemed ? (
+                <div style={{ color: '#4caf50', fontSize: '15px', fontWeight: 700, marginTop: '6px' }}>
+                  恭喜破關!飲品已兌換完成
+                </div>
+              ) : isCollectionComplete ? (
+                <motion.button
+                  onClick={() => setIsRedeemModalOpen(true)}
+                  whileTap={{ scale: 0.98 }}
+                  style={{
+                    width: '180px',
+                    marginTop: '6px',
+                    padding: '7px 11px',
+                    borderRadius: '10px',
+                    border: '1px solid #ffd66b',
+                    background:
+                      'linear-gradient(180deg, rgba(255,220,120,0.24) 0%, rgba(255,185,70,0.16) 100%)',
+                    color: '#fff3c7',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    lineHeight: 1.35,
+                    boxShadow: '0 0 12px rgba(255,215,0,0.22)',
+                  }}
+                >
+                  已收集 {collectedCount} / {totalCards} 張<br/>恭喜已集滿! <br/>可點此兌換任一杯飲品
+                </motion.button>
+              ) : (
+                <p style={{ color: '#aaa', fontSize: '16px', margin: '3px 0 0' }}>
+                  已收集 {collectedCount} / {totalCards} 張・雙指縮放精確點擊
+                </p>
+              )}
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               {transform.scale > 1.05 && (
@@ -642,6 +839,196 @@ export function TreasureBox({ isOpen, onClose, lastCardId }: TreasureBoxProps) {
                       : '✓ 已收集'
                     : '待收集'}
                 </span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Redeem Code Modal */}
+      <AnimatePresence>
+        {isRedeemModalOpen && (
+          <motion.div
+            key='redeem-code'
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10001,
+              background: 'rgba(0,0,0,0.78)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px',
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => closeRedeemModal()}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 16 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: 'min(520px, 92vw)',
+                borderRadius: '16px',
+                border: '1px solid rgba(255,215,0,0.35)',
+                background: 'linear-gradient(180deg, #132033 0%, #0b1424 100%)',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.65)',
+                color: '#ecf0f7',
+                padding: '18px 18px 16px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', color: '#ffd66b' }}>集滿兌換碼</h3>
+                <button
+                  onClick={() => closeRedeemModal()}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#d6dfef',
+                    fontSize: '20px',
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <p style={{ margin: '10px 0', fontSize: '14px', color: '#c2cbe0' }}>
+                集滿 12 張後，系統會為你保留一組一次性兌換碼。到店後出示給店員，由商家後台輸入核銷並選擇本次免費飲品。
+              </p>
+
+              <div
+                style={{
+                  border: '1px solid rgba(120,160,240,0.35)',
+                  borderRadius: '12px',
+                  padding: '14px 12px',
+                  marginBottom: '10px',
+                  background: 'rgba(70,120,220,0.1)',
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: '8px' }}>店內核銷方式</div>
+                <div style={{ fontSize: '13px', color: '#d6deee', lineHeight: 1.6 }}>
+                  1. 出示下方兌換碼給店員。<br />
+                  2. 店員在商家後台輸入兌換碼。<br />
+                  3. 店員選擇本次免費飲品並完成點單，系統會自動列入兌換統計。
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border:
+                    isAlreadyRedeemed || rewardCodeError
+                      ? isAlreadyRedeemed
+                        ? '1px solid rgba(76, 175, 80, 0.45)'
+                        : '1px solid rgba(230, 80, 80, 0.45)'
+                      : '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: '12px',
+                  padding: '14px 12px',
+                  background:
+                    isAlreadyRedeemed
+                      ? 'rgba(76, 175, 80, 0.1)'
+                      : rewardCodeError
+                        ? 'rgba(230, 80, 80, 0.08)'
+                        : 'rgba(255,255,255,0.04)',
+                  marginBottom: '10px',
+                }}
+              >
+                <div style={{ fontSize: '12px', color: '#9fb0c8', marginBottom: '8px' }}>
+                  一次性兌換碼
+                </div>
+                {isRewardCodeLoading ? (
+                  <div style={{ fontSize: '15px', color: '#fff3c7' }}>正在建立兌換碼…</div>
+                ) : isAlreadyRedeemed ? (
+                  <div
+                    style={{
+                      fontSize: '16px',
+                      fontWeight: 700,
+                      color: '#4caf50',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    恭喜破關! 飲品已兌換完成
+                  </div>
+                ) : rewardCode ? (
+                  <>
+                    <div
+                      style={{
+                        fontSize: '28px',
+                        letterSpacing: '1.5px',
+                        fontWeight: 800,
+                        color: '#fff3c7',
+                        marginBottom: '8px',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {rewardCode.code}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#d6deee', lineHeight: 1.5 }}>
+                      {rewardCodeMessage}
+                      {rewardCode.expiresAt
+                        ? ` 效期至 ${new Date(rewardCode.expiresAt).toLocaleDateString('zh-TW')}`
+                        : ''}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: '14px', color: '#ffb4b4', lineHeight: 1.5 }}>
+                    {rewardCodeError || '目前無可用兌換碼'}
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: '#9fb0c8',
+                  lineHeight: 1.6,
+                  marginBottom: '10px',
+                }}
+              >
+                提醒：同一帳號在未核銷前不會重新發碼；已核銷完成後，也不會再次取得新的集滿兌換碼。
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={copyRewardCode}
+                  disabled={!rewardCode || isRewardCodeLoading}
+                  style={{
+                    background: 'rgba(255,215,0,0.16)',
+                    border: '1px solid rgba(255,215,0,0.35)',
+                    color: '#fff3c7',
+                    borderRadius: '10px',
+                    padding: '9px 12px',
+                    cursor: rewardCode ? 'pointer' : 'not-allowed',
+                    fontWeight: 700,
+                  }}
+                >
+                  複製兌換碼
+                </button>
+                <button
+                  onClick={loadRewardCode}
+                  disabled={isRewardCodeLoading}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    color: '#d6dfef',
+                    borderRadius: '10px',
+                    padding: '9px 12px',
+                    cursor: isRewardCodeLoading ? 'not-allowed' : 'pointer',
+                    fontWeight: 700,
+                  }}
+                >
+                  重新取得
+                </button>
+                {copyFeedback && (
+                  <div style={{ display: 'flex', alignItems: 'center', fontSize: '13px', color: '#c2cbe0' }}>
+                    {copyFeedback}
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>
