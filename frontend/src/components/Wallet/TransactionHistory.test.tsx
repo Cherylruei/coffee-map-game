@@ -28,14 +28,16 @@ const mockTransactions = [
     note: '現金儲值',
     order_ref: null,
     created_at: '2026-04-15T10:30:00Z',
+    payment_method: 'cash',
   },
   {
     id: 2,
     amount: -60,
-    type: 'spend',
+    type: 'deduct',
     note: '點單消費',
     order_ref: 'ORD-001',
     created_at: '2026-04-16T14:00:00Z',
+    payment_method: 'line_pay',
   },
   {
     id: 3,
@@ -44,12 +46,18 @@ const mockTransactions = [
     note: '現金儲值',
     order_ref: null,
     created_at: '2026-04-17T09:00:00Z',
+    payment_method: 'cash',
   },
 ]
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('TransactionHistory', () => {
+  const defaultProps = {
+    isOpen: true,
+    onClose: vi.fn(),
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(walletAPI.getBalance).mockResolvedValue({
@@ -63,21 +71,21 @@ describe('TransactionHistory', () => {
 
   it('掛載時呼叫 trackViewTransactionHistory', async () => {
     await act(async () => {
-      render(<TransactionHistory />)
+      render(<TransactionHistory {...defaultProps} />)
     })
     expect(trackViewTransactionHistory).toHaveBeenCalledTimes(1)
   })
 
   it('顯示「消費紀錄」標題', async () => {
     await act(async () => {
-      render(<TransactionHistory />)
+      render(<TransactionHistory {...defaultProps} />)
     })
-    expect(screen.getByText('消費紀錄')).toBeInTheDocument()
+    expect(screen.getByText(/消費紀錄/)).toBeInTheDocument()
   })
 
   it('API 回傳交易時顯示所有筆數', async () => {
     await act(async () => {
-      render(<TransactionHistory />)
+      render(<TransactionHistory {...defaultProps} />)
     })
     await waitFor(() => {
       // 兩筆現金儲值 + 一筆點單消費
@@ -88,7 +96,7 @@ describe('TransactionHistory', () => {
 
   it('儲值筆數顯示 + 金額（綠色）', async () => {
     await act(async () => {
-      render(<TransactionHistory />)
+      render(<TransactionHistory {...defaultProps} />)
     })
     await waitFor(() => {
       // 有兩筆儲值，找 +$150
@@ -98,7 +106,7 @@ describe('TransactionHistory', () => {
 
   it('消費筆數顯示 - 金額（紅色/muted）', async () => {
     await act(async () => {
-      render(<TransactionHistory />)
+      render(<TransactionHistory {...defaultProps} />)
     })
     await waitFor(() => {
       expect(screen.getByText('-$60')).toBeInTheDocument()
@@ -111,7 +119,7 @@ describe('TransactionHistory', () => {
     } as any)
 
     await act(async () => {
-      render(<TransactionHistory />)
+      render(<TransactionHistory {...defaultProps} />)
     })
     await waitFor(() => {
       expect(screen.getByText('尚無消費紀錄')).toBeInTheDocument()
@@ -122,7 +130,7 @@ describe('TransactionHistory', () => {
     vi.mocked(walletAPI.getBalance).mockRejectedValue(new Error('network'))
 
     await act(async () => {
-      render(<TransactionHistory />)
+      render(<TransactionHistory {...defaultProps} />)
     })
     await waitFor(() => {
       expect(screen.getByText('載入失敗，請稍後再試')).toBeInTheDocument()
@@ -131,10 +139,21 @@ describe('TransactionHistory', () => {
 
   it('顯示目前餘額', async () => {
     await act(async () => {
-      render(<TransactionHistory />)
+      render(<TransactionHistory {...defaultProps} />)
     })
     await waitFor(() => {
       expect(screen.getByText('$290')).toBeInTheDocument()
+    })
+  })
+
+  it('顯示付款方式與儲值來源', async () => {
+    await act(async () => {
+      render(<TransactionHistory {...defaultProps} />)
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByText('儲值來源：現金')).toHaveLength(2)
+      expect(screen.getByText('付款方式：LINE Pay')).toBeInTheDocument()
     })
   })
 })

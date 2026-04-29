@@ -1624,6 +1624,27 @@ app.get('/api/wallet/balance', authenticateToken, async (req, res) => {
 
     let transactions = txResult.data || [];
 
+    // Enrich topup transactions with topup QR payment method (cash / line)
+    const topupRefs = [...new Set(
+      transactions
+        .filter(tx => tx.type === 'topup' && tx.order_ref)
+        .map(tx => tx.order_ref)
+    )];
+
+    const topupPaymentMap = {};
+    if (topupRefs.length > 0) {
+      const { data: topupRows } = await supabase
+        .from('topup_qr_codes')
+        .select('code, payment_method')
+        .in('code', topupRefs);
+
+      for (const row of topupRows || []) {
+        if (row?.code) {
+          topupPaymentMap[row.code] = row.payment_method || 'cash';
+        }
+      }
+    }
+
     // Enrich deduct transactions: replace QR-code note with order item names
     const orderRefs = [...new Set(
       transactions
@@ -1636,13 +1657,14 @@ app.get('/api/wallet/balance', authenticateToken, async (req, res) => {
         orderRefs.map(ref =>
           supabase
             .from('orders')
-            .select('qr_codes, items')
+            .select('qr_codes, items, payment_method, reward_code')
             .filter('qr_codes', 'cs', JSON.stringify([ref]))
             .maybeSingle()
         )
       );
 
       const qrToItems = {};
+      const qrToPayment = {};
       for (let i = 0; i < orderRefs.length; i++) {
         const order = orderResults[i].data;
         if (order?.items?.length) {
@@ -1650,16 +1672,56 @@ app.get('/api/wallet/balance', authenticateToken, async (req, res) => {
             .map(item => `${item.name}${item.qty > 1 ? ` ×${item.qty}` : ''}`)
             .join('、');
         }
+
+        if (order?.reward_code) {
+          qrToPayment[orderRefs[i]] = 'reward_code';
+        } else if (order?.payment_method === 'line_pay') {
+          qrToPayment[orderRefs[i]] = 'line_pay';
+        } else if (order?.payment_method === 'cash') {
+          qrToPayment[orderRefs[i]] = 'cash';
+        } else {
+          qrToPayment[orderRefs[i]] = 'wallet';
+        }
       }
 
       transactions = transactions.map(tx => {
         if (tx.type === 'deduct' && tx.order_ref && qrToItems[tx.order_ref]) {
-          return { ...tx, note: qrToItems[tx.order_ref] };
+          return {
+            ...tx,
+            note: qrToItems[tx.order_ref],
+            payment_method: qrToPayment[tx.order_ref] || 'wallet',
+          };
         }
         // Clean up old QR-code-in-note format for records without a matched order
         if (tx.type === 'deduct' && tx.note?.startsWith('消費扣款（QR:')) {
-          return { ...tx, note: '消費扣款' };
+          return { ...tx, note: '消費扣款', payment_method: 'wallet' };
         }
+        if (tx.type === 'deduct') {
+          return { ...tx, payment_method: 'wallet' };
+        }
+
+        if (tx.type === 'topup') {
+          return {
+            ...tx,
+            payment_method: tx.order_ref ? (topupPaymentMap[tx.order_ref] || 'cash') : 'cash',
+          };
+        }
+
+        return tx;
+      });
+    } else {
+      transactions = transactions.map(tx => {
+        if (tx.type === 'topup') {
+          return {
+            ...tx,
+            payment_method: tx.order_ref ? (topupPaymentMap[tx.order_ref] || 'cash') : 'cash',
+          };
+        }
+
+        if (tx.type === 'deduct') {
+          return { ...tx, payment_method: 'wallet' };
+        }
+
         return tx;
       });
     }
