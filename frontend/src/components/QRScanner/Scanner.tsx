@@ -46,8 +46,8 @@ export function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
                 await scanner.start(
                     { facingMode: 'environment' },
                     {
-                        fps: 10,
-                        qrbox: { width: 250, height: 250 },
+                        fps: 30,
+                        qrbox: { width: 350, height: 350 },
                     },
                     (decodedText) => {
                         if (mounted) {
