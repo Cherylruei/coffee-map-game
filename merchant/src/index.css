@@ -850,6 +850,25 @@ body,
   border-color: var(--accent);
   color: var(--accent);
 }
+.or-delete-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.or-delete-btn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.or-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ── 訂單編輯 Modal ── */
 .edit-modal-overlay {

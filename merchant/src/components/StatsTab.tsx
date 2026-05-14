@@ -3,6 +3,7 @@ import { Stats, QRCodeItem, Order } from '../types';
 import { api } from '../utils/api';
 import { fmtDate } from '../utils/format';
 import { OrderEditModal } from './OrderEditModal';
+import { useDialog } from '../context/DialogContext';
 
 interface Props {
   sessionToken: string;
@@ -247,11 +248,13 @@ function exportCSV(
 }
 
 export function StatsTab({ sessionToken, refreshSignal }: Props) {
+  const showDialog = useDialog();
   const [stats, setStats] = useState<Stats | null>(null);
   const [qrAll, setQrAll] = useState<QRCodeItem[]>([]);
   const [qrExpanded, setQrExpanded] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>('today');
   const [topups, setTopups] = useState<TopupRecord[]>([]);
   const [walletTxs, setWalletTxs] = useState<WalletTransaction[]>([]);
@@ -337,6 +340,37 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
     setEditingOrder(null);
     loadOrders();
     loadStats();
+  }
+
+  function handleDirectDelete(orderId: string) {
+    showDialog({
+      type: 'confirm',
+      title: '確定刪除此訂單？',
+      message: '此動作無法復原，相關統計數據也會一併更新。',
+      buttons: [
+        { label: '取消', variant: 'secondary' },
+        {
+          label: '確認刪除',
+          variant: 'danger',
+          onClick: () => {
+            setDeletingOrderId(orderId);
+            api<{ success: boolean }>(
+              `/api/admin/order/${orderId}`,
+              sessionToken,
+              { method: 'DELETE' },
+            ).then((data) => {
+              setDeletingOrderId(null);
+              if (data && (data as { success: boolean }).success) {
+                loadOrders();
+                loadStats();
+              } else {
+                showDialog({ type: 'error', title: '刪除失敗，請稍後再試' });
+              }
+            });
+          },
+        },
+      ],
+    });
   }
 
   const qrDisplayed = qrExpanded ? qrAll : qrAll.slice(0, QR_LIMIT);
@@ -557,12 +591,21 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
                   <span className='or-staff'>{staff}</span>
                   <span className='or-time'>{at}</span>
                   {order.id && (
-                    <button
-                      className='or-edit-btn'
-                      onClick={() => setEditingOrder(order)}
-                    >
-                      修改
-                    </button>
+                    <>
+                      <button
+                        className='or-edit-btn'
+                        onClick={() => setEditingOrder(order)}
+                      >
+                        修改
+                      </button>
+                      <button
+                        className='or-delete-btn'
+                        onClick={() => handleDirectDelete(order.id!)}
+                        disabled={deletingOrderId === order.id}
+                      >
+                        {deletingOrderId === order.id ? '刪除中…' : '刪除'}
+                      </button>
+                    </>
                   )}
                 </div>
                 <div className='or-items'>{itemsStr || '無品項資料'}</div>

@@ -3,7 +3,19 @@
     "allow": [
       "Bash(cd:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Read(//c/Users/heave/everything-claude-code/**)",
+      "Bash(npm install:*)",
+      "Bash(node scripts/install-apply.js --target claude typescript --dry-run)",
+      "Bash(node scripts/install-apply.js --target claude typescript)",
+      "Bash(npm test *)",
+      "Bash(ls ~/coffee-map-game/frontend/.env*)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(node --check server-supabase.js)",
+      "Bash(git ls-tree *)",
+      "Bash(xargs grep *)"
     ]
   }
 }
