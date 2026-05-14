@@ -112,7 +112,9 @@ body,
   align-items: center;
   justify-content: center;
   gap: 3px;
-  transition: color 0.15s, opacity 0.15s;
+  transition:
+    color 0.15s,
+    opacity 0.15s;
   min-height: 52px;
   font-size: 0.65rem;
   line-height: 1;
@@ -549,7 +551,7 @@ body,
   font-size: 0.9rem;
   padding: 8px 12px;
   outline: none;
-  width: 160px;
+  width: 100%;
 }
 .employee-input::placeholder {
   color: var(--muted);

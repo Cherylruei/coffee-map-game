@@ -989,6 +989,37 @@ app.post('/api/admin/redeem-code/preview', authenticateAdmin, async (req, res) =
   }
 });
 
+// 僅限開發環境：生成測試用兌換碼
+app.post('/api/admin/test/create-reward-code', authenticateAdmin, async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ success: false, message: '此端點僅限開發環境使用' });
+  }
+  try {
+    const { data: anyUser, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .limit(1)
+      .single();
+    if (userError || !anyUser) {
+      return res.status(400).json({ success: false, message: '資料庫中無使用者，無法建立測試碼' });
+    }
+    const code = generateRewardCode();
+    const expiresAt = buildRewardExpiryDate();
+    const { error } = await supabase.from('collection_reward_codes').insert({
+      code,
+      reward_type: REWARD_TYPE_FREE_DRINK,
+      status: 'pending',
+      expires_at: expiresAt,
+      user_id: anyUser.id,
+    });
+    if (error) throw error;
+    res.json({ success: true, code, expiresAt });
+  } catch (error) {
+    console.error('Test reward code create error:', error);
+    res.status(500).json({ success: false, message: '建立失敗' });
+  }
+});
+
 app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
   try {
     const {

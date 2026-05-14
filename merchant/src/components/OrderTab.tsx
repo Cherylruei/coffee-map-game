@@ -50,7 +50,7 @@ export function OrderTab({
     }
   }, [rewardCodeInfo]);
   const [checkingRewardCode, setCheckingRewardCode] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<OptionalPaymentMethod>('');
+  const [paymentMethod, setPaymentMethod] = useState<OptionalPaymentMethod>('cash');
   const [employeeId, setEmployeeId] = useState('');
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerQR, setViewerQR] = useState<QRCodeItem | null>(null);
@@ -185,6 +185,7 @@ export function OrderTab({
     console.log('[DEBUG] applyRewardCode success, setting rewardCodeInfo:', result.rewardCode);
     setRewardCodeInfo(result.rewardCode);
     setRewardCodeInput(result.rewardCode.code);
+    setPaymentMethod('');
     const selectedItemName = redeemableItems.some((item) => item.name === (redeemableItems[0]?.name || ''))
       ? (redeemableItems[0]?.name || '')
       : (redeemableItems[0]?.name || '');
@@ -250,6 +251,14 @@ export function OrderTab({
     }
     if (totalCups === 0) {
       showDialog({ type: 'warning', title: '請至少選擇一個品項' });
+      return;
+    }
+    if (!rewardCodeInfo && !paymentMethod) {
+      showDialog({ type: 'warning', title: '請選擇付款方式' });
+      return;
+    }
+    if (rewardCodeInfo && finalAmount > 0 && !paymentMethod) {
+      showDialog({ type: 'warning', title: '訂單有剩餘金額，請選擇付款方式' });
       return;
     }
 
