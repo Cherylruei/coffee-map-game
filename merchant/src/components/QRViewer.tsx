@@ -9,9 +9,10 @@ interface Props {
   pendingOrder: PendingOrder | null;
   onCommit: () => void;
   onCancel: () => void;
+  committing?: boolean;
 }
 
-export function QRViewer({ qrCode, cupCount, pendingOrder, onCommit, onCancel }: Props) {
+export function QRViewer({ qrCode, cupCount, pendingOrder, onCommit, onCancel, committing = false }: Props) {
   const [copied, setCopied] = useState(false);
   const qrSize = Math.min(240, Math.floor(window.innerWidth * 0.65));
 
@@ -84,11 +85,11 @@ export function QRViewer({ qrCode, cupCount, pendingOrder, onCommit, onCancel }:
 
       {/* 底部操作列 - 固定在底部 */}
       <div className="qr-viewer-bottom">
-        <button className="btn outline" style={{ flex: 1, padding: '11px 14px', fontSize: '0.9rem' }} onClick={onCancel}>
+        <button className="btn outline" style={{ flex: 1, padding: '11px 14px', fontSize: '0.9rem' }} onClick={onCancel} disabled={committing}>
           取消
         </button>
-        <button className="btn" style={{ flex: 1, padding: '11px 14px', fontSize: '0.9rem' }} onClick={onCommit}>
-          ✅ 完成收款
+        <button className="btn" style={{ flex: 1, padding: '11px 14px', fontSize: '0.9rem' }} onClick={onCommit} disabled={committing}>
+          {committing ? '處理中…' : '✅ 完成收款'}
         </button>
       </div>
     </div>

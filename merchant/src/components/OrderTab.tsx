@@ -56,6 +56,7 @@ export function OrderTab({
   const [viewerQR, setViewerQR] = useState<QRCodeItem | null>(null);
   const [pendingOrder, setPendingOrder] = useState<PendingOrder | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [committing, setCommitting] = useState(false);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/menu`)
@@ -324,8 +325,10 @@ export function OrderTab({
   }
 
   async function commitAndClose() {
-    if (!pendingOrder) return;
+    if (!pendingOrder || committing) return;
+    setCommitting(true);
     await submitOrder(pendingOrder);
+    setCommitting(false);
   }
 
   function cancelViewer() {
@@ -600,6 +603,7 @@ export function OrderTab({
           pendingOrder={pendingOrder}
           onCommit={commitAndClose}
           onCancel={cancelViewer}
+          committing={committing}
         />
       )}
     </>
