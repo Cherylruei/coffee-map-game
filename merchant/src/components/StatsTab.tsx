@@ -182,6 +182,23 @@ function paymentLabel(method: string | null | undefined): string {
   return '未選擇';
 }
 
+function fmtDateOnly(val: string | null | undefined): string {
+  if (!val) return '—';
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('zh-TW');
+}
+
+function fmtTimeOnly(val: string | null | undefined): string {
+  if (!val) return '';
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('zh-TW', { hour12: false });
+}
+
+// 讓 Excel 把員編 / LINE ID 當成文字，避免開頭的 0 被吃掉（005808 → 5808）
+function asTextCell(val: string): string {
+  return val ? `="${val}"` : '';
+}
+
 function exportCSV(
   orders: Order[],
   walletTxs: WalletTransaction[],
@@ -190,34 +207,54 @@ function exportCSV(
   const rows: string[][] = [];
 
   rows.push(['【訂單明細】']);
-  rows.push(['日期', '員工', '顧客（LINE 名稱）', 'LINE ID / 員工編號', '品項', '數量', '金額', '付款方式']);
+  rows.push([
+    '訂單編號', '日期', '時間', '員工', '顧客（LINE 名稱）', 'LINE ID / 員編',
+    '品項', '數量', '單價', '小計', '折扣', '訂單合計', '付款方式', '備註',
+  ]);
 
-  for (const order of orders) {
-    const date = fmtDate(order.createdAt ?? order.created_at);
+  orders.forEach((order, i) => {
+    // 同一張單的每一列共用同一個編號，方便對單時把多品項圈在一起
+    const orderNo = `#${String(i + 1).padStart(3, '0')}`;
+    const dateStr = fmtDateOnly(order.createdAt ?? order.created_at);
+    const timeStr = fmtTimeOnly(order.createdAt ?? order.created_at);
     const staff = order.staffName ?? order.staff_name ?? '未知';
     const payment = paymentLabel(order.paymentMethod ?? order.payment_method);
     const total = String(order.totalAmount ?? order.total_amount ?? 0);
     const custName = order.customerName ?? order.customer_name ?? '';
     const custId = order.customerLineId ?? order.customer_line_id
       ?? order.employeeId ?? order.employee_id ?? '';
+    const idText = asTextCell(custId);
+    const discount = (order.discount ?? 0) as number;
+    const discountStr = discount > 0 ? String(discount) : '';
+    const rewardCode = order.rewardCode ?? order.reward_code ?? '';
+    const rewardItemName = order.rewardItemName ?? order.reward_item_name ?? '';
+    const note = rewardCode ? `兌換券 ${rewardItemName || '免費飲品'} ${rewardCode}` : '';
 
-    if (!order.items || order.items.length === 0) {
-      rows.push([date, staff, custName, custId, '(無品項)', '0', total, payment]);
-    } else {
-      order.items.forEach((item, idx) => {
-        rows.push([
-          idx === 0 ? date : '',
-          idx === 0 ? staff : '',
-          idx === 0 ? custName : '',
-          idx === 0 ? custId : '',
-          item.name,
-          String(item.qty),
-          idx === 0 ? total : '',
-          idx === 0 ? payment : '',
-        ]);
-      });
-    }
-  }
+    const items = order.items && order.items.length > 0
+      ? order.items
+      : [{ name: '(無品項)', qty: 0, price: 0 }];
+
+    items.forEach((item, idx) => {
+      const first = idx === 0;
+      // 訂單層級欄位（日期、員工、付款…）每一列都填滿；金額/折扣/合計只放第一列避免重複加總
+      rows.push([
+        orderNo,
+        dateStr,
+        timeStr,
+        staff,
+        custName,
+        idText,
+        item.name,
+        String(item.qty),
+        String(item.price),
+        String(item.qty * item.price),
+        first ? discountStr : '',
+        first ? total : '',
+        payment,
+        first ? note : '',
+      ]);
+    });
+  });
   if (orders.length === 0) rows.push(['(本期間無訂單)']);
 
   rows.push([]);
