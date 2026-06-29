@@ -46,6 +46,8 @@ export const authAPI = {
 
 export const userAPI = {
     getCollection: () => api.get('/user/collection'),
+    registerCustomerEmployeeId: (customerEmployeeId: string) =>
+        api.post('/user/customer-employee-id', { customerEmployeeId }),
 };
 
 export const gachaAPI = {

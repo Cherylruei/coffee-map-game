@@ -14,6 +14,8 @@ export interface User {
     pictureUrl: string;
     shareTokens: number;
     createdAt: string;
+    // 會員自行登記的員工編號（強制必填、不可修改）
+    customerEmployeeId?: string | null;
 }
 
 export interface Collection {

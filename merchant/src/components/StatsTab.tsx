@@ -199,6 +199,12 @@ function asTextCell(val: string): string {
   return val ? `="${val}"` : '';
 }
 
+// 防 CSV 公式注入：值以 = + - @ 或控制字元開頭時前綴單引號，
+// 避免 Excel 將不可信的自由文字（LINE 名稱、備註等）當公式執行。
+function csvSafe(val: string): string {
+  return val && /^[=+\-@\t\r]/.test(val) ? `'${val}` : val;
+}
+
 function exportCSV(
   orders: Order[],
   walletTxs: WalletTransaction[],
@@ -208,7 +214,7 @@ function exportCSV(
 
   rows.push(['【訂單明細】']);
   rows.push([
-    '訂單編號', '日期', '時間', '員工', '顧客（LINE 名稱）', 'LINE ID / 員編',
+    '訂單編號', '日期', '時間', '員工', '顧客（LINE 名稱）', '員編', 'LINE ID / 員編',
     '品項', '數量', '單價', '小計', '折扣', '訂單合計', '付款方式', '備註',
   ]);
 
@@ -224,6 +230,9 @@ function exportCSV(
     const custId = order.customerLineId ?? order.customer_line_id
       ?? order.employeeId ?? order.employee_id ?? '';
     const idText = asTextCell(custId);
+    // 會員自行登記的員編（獨立欄，不含店員手動代填）
+    const memberEmpId = order.customerEmployeeId ?? order.customer_employee_id ?? '';
+    const memberEmpText = asTextCell(memberEmpId);
     const discount = (order.discount ?? 0) as number;
     const discountStr = discount > 0 ? String(discount) : '';
     const rewardCode = order.rewardCode ?? order.reward_code ?? '';
@@ -241,17 +250,18 @@ function exportCSV(
         orderNo,
         dateStr,
         timeStr,
-        staff,
-        custName,
+        csvSafe(staff),
+        csvSafe(custName),
+        first ? memberEmpText : '',
         idText,
-        item.name,
+        csvSafe(item.name),
         String(item.qty),
         String(item.price),
         String(item.qty * item.price),
         first ? discountStr : '',
         first ? total : '',
         payment,
-        first ? note : '',
+        first ? csvSafe(note) : '',
       ]);
     });
   });
@@ -263,11 +273,11 @@ function exportCSV(
   for (const tx of walletTxs) {
     rows.push([
       fmtDate(tx.created_at),
-      tx.users?.display_name ?? '—',
-      tx.users?.line_user_id ?? '—',
+      csvSafe(tx.users?.display_name ?? '—'),
+      csvSafe(tx.users?.line_user_id ?? '—'),
       tx.type === 'topup' ? '儲值' : '消費',
       String(Math.abs(tx.amount)),
-      tx.note ?? '',
+      csvSafe(tx.note ?? ''),
     ]);
   }
   if (walletTxs.length === 0) rows.push(['(本期間無儲值金交易)']);
@@ -620,6 +630,8 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
             const qrCount = (order.qrCodes ?? order.qr_codes ?? []).length;
             const custName = order.customerName ?? order.customer_name;
             const empId = order.employeeId ?? order.employee_id;
+            // 會員自行登記員編（獨立顯示，與店員手動代填 empId 區隔）
+            const memberEmpId = order.customerEmployeeId ?? order.customer_employee_id;
             const rewardCode = order.rewardCode ?? order.reward_code;
             const rewardItemName = order.rewardItemName ?? order.reward_item_name;
             return (
@@ -666,6 +678,11 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
                   ) : empId ? (
                     <span style={{ marginLeft: 6, color: 'var(--muted)' }}>
                       員編：{empId}
+                    </span>
+                  ) : null}
+                  {memberEmpId ? (
+                    <span style={{ marginLeft: 6, color: '#6b5b95' }}>
+                      🪪 員編：{memberEmpId}
                     </span>
                   ) : null}
                 </div>

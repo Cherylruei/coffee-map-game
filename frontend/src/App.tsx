@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { LoginButton } from './components/Auth/LoginButton';
 import { UserAvatar } from './components/Auth/UserAvatar';
+import { EmployeeIdModal } from './components/Auth/EmployeeIdModal';
 import { QRScanner } from './components/QRScanner/Scanner';
 import { GachaAnimation } from './components/Card/GachaAnimation';
 import { TreasureBox } from './components/Collection/TreasureBox';
@@ -47,7 +48,11 @@ let qrCodeProcessing = false;
 const PENDING_QR_KEY = 'pending_qr_code';
 
 function App() {
-  const { isAuthenticated, setAuth, user } = useAuthStore();
+  const { isAuthenticated, setAuth, updateUser, user } = useAuthStore();
+  // 員編登記狀態：避免已登記者在載入完成前閃現登記彈窗
+  const [employeeIdReady, setEmployeeIdReady] = useState(
+    () => !!useAuthStore.getState().user?.customerEmployeeId,
+  );
   const showDialog = useDialog();
   const {
     collection,
@@ -101,6 +106,9 @@ function App() {
         setPendingShares(response.data.pendingShares || {});
         setShareTokens(response.data.shareTokens);
         setDrawChances(response.data.drawChances || 0);
+        // 同步會員員編（舊快取可能尚無此欄位）
+        updateUser({ customerEmployeeId: response.data.customerEmployeeId ?? null });
+        setEmployeeIdReady(true);
       }
     } catch (error) {
       console.error('載入收藏失敗:', error);
@@ -407,6 +415,13 @@ function App() {
     <div className='app'>
       {/* 右上角頭像 */}
       <UserAvatar />
+
+      {/* 員工編號登記彈窗（強制必填、不可關閉、不可修改） */}
+      {isAuthenticated && employeeIdReady && user && !user.customerEmployeeId && (
+        <EmployeeIdModal
+          onRegistered={(customerEmployeeId) => updateUser({ customerEmployeeId })}
+        />
+      )}
 
       {/* 主內容 */}
       <div className='main-content'>
