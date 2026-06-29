@@ -10,6 +10,11 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('cross-fetch');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const {
+  validateCustomerEmployeeId,
+  resolveRegistration,
+  isUniqueViolation,
+} = require('./lib/customerEmployeeId');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -83,6 +88,16 @@ const gachaPullLimiter = rateLimit({
 const gachaDrawLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 15,
+  keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
+  message: { success: false, message: '請求過於頻繁，請稍後再試' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 員編登記：嚴格限流，防止枚舉已被占用的員編與暴力寫入
+const customerEmployeeIdLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
   keyGenerator: (req, res) => req.user?.userId || ipKeyGenerator(req, res),
   message: { success: false, message: '請求過於頻繁，請稍後再試' },
   standardHeaders: true,
@@ -183,7 +198,7 @@ async function getRewardCodeWithUser(code) {
 
   const { data: user, error: userError } = await supabase
     .from('users')
-    .select('display_name, line_user_id')
+    .select('display_name, line_user_id, customer_employee_id')
     .eq('id', rewardCode.user_id)
     .maybeSingle();
 
@@ -318,6 +333,7 @@ app.post('/api/auth/line/callback', async (req, res) => {
         userId: user.line_user_id,
         displayName: user.display_name,
         pictureUrl: user.picture_url,
+        customerEmployeeId: user.customer_employee_id ?? null,
       },
       token,
     });
@@ -332,7 +348,7 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('share_tokens, draw_chances')
+      .select('share_tokens, draw_chances, customer_employee_id')
       .eq('id', req.user.userId)
       .single();
 
@@ -367,10 +383,67 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
       pendingShares: pendingSharesByCard, // { cardId: count, ... }
       shareTokens: user?.share_tokens || 3,
       drawChances: user?.draw_chances || 0,
+      customerEmployeeId: user?.customer_employee_id ?? null,
     });
   } catch (error) {
     console.error('Get collection error:', error);
     res.status(500).json({ success: false, message: '取得收藏失敗' });
+  }
+});
+
+// 2.05 登記會員員工編號（強制必填、不可修改、全系統唯一）
+app.post('/api/user/customer-employee-id', authenticateToken, customerEmployeeIdLimiter, async (req, res) => {
+  try {
+    // 1. 格式驗證
+    const validation = validateCustomerEmployeeId(req.body?.customerEmployeeId);
+    if (!validation.ok) {
+      return res.status(validation.status).json({ success: false, message: validation.message });
+    }
+    const value = validation.value;
+
+    // 2. 讀取目前已登記員編 + 是否被其他帳號占用
+    const [{ data: current }, { data: taken }] = await Promise.all([
+      supabase
+        .from('users')
+        .select('customer_employee_id')
+        .eq('id', req.user.userId)
+        .single(),
+      supabase
+        .from('users')
+        .select('id')
+        .eq('customer_employee_id', value)
+        .neq('id', req.user.userId)
+        .maybeSingle(),
+    ]);
+
+    // 3. 決策：已登記不可修改 / 已被占用
+    const decision = resolveRegistration({
+      currentEmployeeId: current?.customer_employee_id ?? null,
+      takenByOther: !!taken,
+    });
+    if (!decision.ok) {
+      const body = { success: false, message: decision.message };
+      if (decision.customerEmployeeId) body.customerEmployeeId = decision.customerEmployeeId;
+      return res.status(decision.status).json(body);
+    }
+
+    // 4. 寫入（競態下由 DB 部分唯一索引擋下）
+    const { error } = await supabase
+      .from('users')
+      .update({ customer_employee_id: value })
+      .eq('id', req.user.userId);
+
+    if (error) {
+      if (isUniqueViolation(error)) {
+        return res.status(409).json({ success: false, message: '此員工編號已被其他帳號登記' });
+      }
+      throw error;
+    }
+
+    res.json({ success: true, customerEmployeeId: value });
+  } catch (error) {
+    console.error('Register customer employee id error:', error);
+    res.status(500).json({ success: false, message: '登記失敗，請稍後再試' });
   }
 });
 
@@ -1060,6 +1133,7 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
     // 查詢 QR code 是否已被顧客掃描，若有則取得 LINE 身分
     let customerName = null;
     let customerLineId = null;
+    let customerEmployeeId = null;
     if (qrCodes && qrCodes.length > 0) {
       const { data: qrData } = await supabase
         .from('qr_codes')
@@ -1070,12 +1144,13 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
       if (qrData?.used_by) {
         const { data: userData } = await supabase
           .from('users')
-          .select('display_name, line_user_id')
+          .select('display_name, line_user_id, customer_employee_id')
           .eq('id', qrData.used_by)
           .maybeSingle();
 
         customerName = userData?.display_name ?? null;
         customerLineId = userData?.line_user_id ?? null;
+        customerEmployeeId = userData?.customer_employee_id ?? null;
       }
     }
 
@@ -1116,6 +1191,7 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
 
       if (!customerName) customerName = rewardPayload.user?.display_name ?? null;
       if (!customerLineId) customerLineId = rewardPayload.user?.line_user_id ?? null;
+      if (!customerEmployeeId) customerEmployeeId = rewardPayload.user?.customer_employee_id ?? null;
     }
 
     const totalDiscount = manualDiscount + rewardDiscount;
@@ -1134,6 +1210,7 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
         qr_codes: qrCodes || [],
         customer_name: customerName,
         customer_line_id: customerLineId,
+        customer_employee_id: customerEmployeeId,
         reward_code: normalizedRewardCode,
         reward_type: rewardCodeRow?.reward_type || null,
         reward_discount: rewardDiscount,

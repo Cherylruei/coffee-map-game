@@ -62,6 +62,9 @@ export interface Order {
   customer_name?: string | null;
   customerLineId?: string | null;
   customer_line_id?: string | null;
+  // 會員自行登記的員編快照（與 employee_id 店員代填區隔）
+  customerEmployeeId?: string | null;
+  customer_employee_id?: string | null;
   rewardCode?: string | null;
   reward_code?: string | null;
   rewardType?: string | null;
