@@ -1276,6 +1276,35 @@ app.put('/api/admin/order/:id', authenticateAdmin, async (req, res) => {
     const { id } = req.params;
     const { items, totalAmount, discount, paymentMethod, employeeId } =
       req.body;
+
+    // 撈現有付款方式以守門儲值金訂單（儲值金為真實金流，非標籤）
+    const { data: existing, error: fetchError } = await supabase
+      .from('orders')
+      .select('payment_method')
+      .eq('id', id)
+      .single();
+    if (fetchError) throw fetchError;
+
+    const oldPM = existing?.payment_method || null;
+    const newPM = paymentMethod || null;
+
+    // 儲值金訂單已於掃碼時固定扣款，禁止編輯；需更動請走退款作廢後重新開單
+    if (oldPM === 'wallet') {
+      return res.status(409).json({
+        success: false,
+        code: 'WALLET_ORDER_LOCKED',
+        message: '儲值金訂單已扣款，不可修改，請使用退款作廢後重新開單',
+      });
+    }
+    // 非儲值金訂單無法切換成儲值金（儲值金需顧客掃碼扣款，編輯無扣款管道）
+    if (newPM === 'wallet') {
+      return res.status(400).json({
+        success: false,
+        code: 'WALLET_NOT_EDITABLE',
+        message: '無法將付款方式改為儲值金，儲值金需由顧客掃碼扣款',
+      });
+    }
+
     const { error } = await supabase
       .from('orders')
       .update({
@@ -1294,10 +1323,64 @@ app.put('/api/admin/order/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 13. 刪除訂單
+// 12b. 退款作廢訂單（儲值金訂單專用：退回餘額 + 軟刪除，保留稽核軌跡）
+app.post('/api/admin/order/:id/void', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+    const { data: result, error } = await supabase.rpc('refund_order_wallet', {
+      p_order_id: id,
+      p_reason: reason || '退款作廢',
+    });
+    if (error) throw error;
+
+    if (!result.success) {
+      const msgMap = {
+        order_not_found:  '查無此訂單',
+        already_voided:   '此訂單已作廢',
+        already_refunded: '此訂單已退款，請勿重複操作',
+        no_deduction:     '查無扣款紀錄，已標記作廢但未退款',
+      };
+      const status = result.error === 'order_not_found' ? 404 : 409;
+      return res.status(status).json({
+        success: false,
+        code: result.error,
+        message: msgMap[result.error] || '退款作廢失敗',
+      });
+    }
+
+    res.json({
+      success: true,
+      refundedAmount: result.refunded_amount,
+      newBalance: result.new_balance,
+      message: `已退款 $${result.refunded_amount} 至顧客錢包`,
+    });
+  } catch (error) {
+    console.error('Order void error:', error);
+    res.status(500).json({ success: false, message: '退款作廢失敗' });
+  }
+});
+
+// 13. 刪除訂單（儲值金訂單禁止硬刪，須改用退款作廢以保餘額對帳）
 app.delete('/api/admin/order/:id', authenticateAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('orders')
+      .select('payment_method')
+      .eq('id', id)
+      .single();
+    if (fetchError) throw fetchError;
+
+    if (existing?.payment_method === 'wallet') {
+      return res.status(409).json({
+        success: false,
+        code: 'WALLET_USE_VOID',
+        message: '儲值金訂單請改用「退款作廢」，不可直接刪除',
+      });
+    }
+
     const { error } = await supabase.from('orders').delete().eq('id', id);
     if (error) throw error;
     res.json({ success: true });
@@ -1318,6 +1401,7 @@ app.get('/api/admin/stats/today', authenticateAdmin, async (req, res) => {
     const { data: orders, error } = await supabase
       .from('orders')
       .select('*')
+      .eq('status', 'active')
       .gte('created_at', todayStart)
       .lte('created_at', todayEnd);
     if (error) throw error;
@@ -2066,10 +2150,11 @@ app.get('/api/admin/reports/monthly', authenticateAdmin, async (req, res) => {
 
     // 並行查詢
     const [ordersResult, totalUsersResult, newUsersResult, topupsResult, spendResult, inventoryResult] = await Promise.all([
-      // 當月訂單
+      // 當月訂單（排除已作廢）
       supabase
         .from('orders')
         .select('*')
+        .eq('status', 'active')
         .gte('created_at', monthStart)
         .lte('created_at', monthEnd),
 
@@ -2093,11 +2178,11 @@ app.get('/api/admin/reports/monthly', authenticateAdmin, async (req, res) => {
         .gte('created_at', monthStart)
         .lte('created_at', monthEnd),
 
-      // 當月消費統計
+      // 當月消費統計（扣款為 deduct；退款作廢 refund 需扣回算淨消費）
       supabase
         .from('wallet_transactions')
         .select('amount')
-        .eq('type', 'spend')
+        .in('type', ['deduct', 'refund'])
         .gte('created_at', monthStart)
         .lte('created_at', monthEnd),
 
@@ -2141,8 +2226,9 @@ app.get('/api/admin/reports/monthly', authenticateAdmin, async (req, res) => {
     // 計算儲值統計
     const topups = topupsResult.data || [];
     const totalTopupAmount = topups.reduce((s, t) => s + (t.amount || 0), 0);
+    // deduct 為負、refund 為正；淨消費 = -(總和)，退款作廢自動沖回
     const spends = spendResult.data || [];
-    const totalSpent = spends.reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+    const totalSpent = Math.max(0, -spends.reduce((s, t) => s + (t.amount || 0), 0));
 
     res.json({
       success: true,
