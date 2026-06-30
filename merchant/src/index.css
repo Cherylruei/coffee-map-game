@@ -542,6 +542,16 @@ body,
   border-color: var(--accent);
   color: var(--accent);
 }
+.payment-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.payment-hint {
+  margin: 6px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
 
 .employee-input {
   background: var(--surface);
@@ -810,6 +820,21 @@ body,
   border-radius: 10px;
   padding: 12px 14px;
   margin-bottom: 8px;
+}
+.order-record.voided {
+  opacity: 0.6;
+}
+.order-record.voided .or-total {
+  text-decoration: line-through;
+  text-decoration-color: var(--muted);
+}
+.or-voided-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 1px 6px;
 }
 .order-record .or-header {
   display: flex;

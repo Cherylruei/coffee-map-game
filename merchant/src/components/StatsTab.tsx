@@ -23,7 +23,7 @@ interface TopupRecord {
 interface WalletTransaction {
   id: string;
   amount: number;
-  type: 'topup' | 'spend';
+  type: 'topup' | 'deduct' | 'refund' | 'spend';
   note?: string | null;
   order_ref?: string | null;
   created_at: string;
@@ -275,7 +275,7 @@ function exportCSV(
       fmtDate(tx.created_at),
       csvSafe(tx.users?.display_name ?? '—'),
       csvSafe(tx.users?.line_user_id ?? '—'),
-      tx.type === 'topup' ? '儲值' : '消費',
+      tx.type === 'topup' ? '儲值' : tx.type === 'refund' ? '退款' : '消費',
       String(Math.abs(tx.amount)),
       csvSafe(tx.note ?? ''),
     ]);
@@ -401,7 +401,7 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
           variant: 'danger',
           onClick: () => {
             setDeletingOrderId(orderId);
-            api<{ success: boolean }>(
+            api<{ success: boolean; message?: string }>(
               `/api/admin/order/${orderId}`,
               sessionToken,
               { method: 'DELETE' },
@@ -411,7 +411,10 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
                 loadOrders();
                 loadStats();
               } else {
-                showDialog({ type: 'error', title: '刪除失敗，請稍後再試' });
+                showDialog({
+                  type: 'error',
+                  title: (data as { message?: string })?.message || '刪除失敗，請稍後再試',
+                });
               }
             });
           },
@@ -634,12 +637,14 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
             const memberEmpId = order.customerEmployeeId ?? order.customer_employee_id;
             const rewardCode = order.rewardCode ?? order.reward_code;
             const rewardItemName = order.rewardItemName ?? order.reward_item_name;
+            const isVoided = order.status === 'voided';
             return (
-              <div key={i} className='order-record'>
+              <div key={i} className={`order-record${isVoided ? ' voided' : ''}`}>
                 <div className='or-header'>
                   <span className='or-staff'>{staff}</span>
                   <span className='or-time'>{at}</span>
-                  {order.id && (
+                  {isVoided && <span className='or-voided-badge'>已退款作廢</span>}
+                  {order.id && !isVoided && (
                     <>
                       <button
                         className='or-edit-btn'

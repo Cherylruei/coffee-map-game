@@ -73,6 +73,12 @@ export interface Order {
   reward_discount?: number;
   rewardItemName?: string | null;
   reward_item_name?: string | null;
+  // 訂單狀態：'active'（預設）/ 'voided'（退款作廢，軟刪除）
+  status?: string;
+  voidedAt?: string | null;
+  voided_at?: string | null;
+  voidedReason?: string | null;
+  voided_reason?: string | null;
 }
 
 export interface PendingOrder {
