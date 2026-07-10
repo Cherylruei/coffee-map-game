@@ -36,7 +36,6 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
   const [menuData, setMenuData] = useState<MenuData | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmVoid, setConfirmVoid] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const showDialog = useDialog();
@@ -84,7 +83,7 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
       return;
     }
     if (lines.length === 0) {
-      showDialog({ type: 'warning', title: '請至少保留一個品項，若要刪除請使用「刪除訂單」' });
+      showDialog({ type: 'warning', title: '請至少保留一個品項' });
       return;
     }
     setSaving(true);
@@ -106,20 +105,6 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
       onSaved();
     } else {
       showDialog({ type: 'error', title: '修改失敗，請稍後再試' });
-    }
-  }
-
-  async function handleDelete() {
-    if (!orderId) return;
-    const data = await api<{ success: boolean }>(
-      `/api/admin/order/${orderId}`,
-      sessionToken,
-      { method: 'DELETE' }
-    );
-    if (data && (data as any).success) {
-      onDeleted();
-    } else {
-      showDialog({ type: 'error', title: (data as any)?.message || '刪除失敗，請稍後再試' });
     }
   }
 
@@ -273,9 +258,9 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
             </span>
           </div>
 
-          <div style={{ marginTop: 16 }}>
-            {isWalletOrder ? (
-              !confirmVoid ? (
+          {isWalletOrder && (
+            <div style={{ marginTop: 16 }}>
+              {!confirmVoid ? (
                 <button className="delete-order-btn" onClick={() => setConfirmVoid(true)}>
                   ↩️ 退款作廢（退回顧客儲值金）
                 </button>
@@ -291,25 +276,9 @@ export function OrderEditModal({ order, sessionToken, onSaved, onDeleted, onClos
                     </button>
                   </div>
                 </div>
-              )
-            ) : !confirmDelete ? (
-              <button className="delete-order-btn" onClick={() => setConfirmDelete(true)}>
-                🗑 刪除整筆訂單
-              </button>
-            ) : (
-              <div className="delete-confirm">
-                <span>確定刪除？此動作無法復原</span>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button className="btn outline" style={{ flex: 1, padding: '8px 0' }} onClick={() => setConfirmDelete(false)}>
-                    取消
-                  </button>
-                  <button className="btn" style={{ flex: 1, padding: '8px 0', background: 'var(--danger)' }} onClick={handleDelete}>
-                    確認刪除
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
