@@ -427,7 +427,9 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
   const qrTotal = qrAll.length;
   const qrUsed = qrAll.filter((q) => q.used ?? false).length;
 
-  const periodOrders = filterByPeriod(orders, period);
+  // 已退款作廢的訂單為軟刪除，仍保留在資料庫供稽核，但不應計入銷售統計
+  const activeOrders = orders.filter((o) => o.status !== 'voided');
+  const periodOrders = filterByPeriod(activeOrders, period);
   const summary = computeSummary(periodOrders);
   const periodTopups = filterTopupByPeriod(topups, period);
   const topupSummary = computeTopupSummary(periodTopups);
@@ -532,12 +534,6 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
               <span>💰 儲值金付款</span>
               <span>
                 {summary.walletOrderCount} 筆・${summary.walletOrderAmount.toLocaleString()}
-              </span>
-            </div>
-            <div className='inv-breakdown-row'>
-              <span>⏺ 未選擇付款</span>
-              <span>
-                {summary.unsetCount} 筆・${summary.unsetAmount.toLocaleString()}
               </span>
             </div>
             <div className='inv-breakdown-row'>
