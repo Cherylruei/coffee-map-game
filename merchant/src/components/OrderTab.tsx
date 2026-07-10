@@ -57,6 +57,35 @@ export function OrderTab({
   const [pendingOrder, setPendingOrder] = useState<PendingOrder | null>(null);
   const [generating, setGenerating] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [walletConfirmed, setWalletConfirmed] = useState(false);
+
+  // 儲值金付款輪詢：客人掃描 QR 完成扣款前，「完成收款」按鈕保持 disabled
+  useEffect(() => {
+    if (!viewerOpen || !viewerQR || pendingOrder?.paymentMethod !== 'wallet') {
+      setWalletConfirmed(false);
+      return;
+    }
+
+    let cancelled = false;
+    setWalletConfirmed(false);
+
+    async function poll() {
+      const result = await api<{ success: boolean; used: boolean }>(
+        `/api/admin/qrcode/status/${viewerQR!.code}`,
+        sessionToken,
+      );
+      if (!cancelled && result?.success && result.used) {
+        setWalletConfirmed(true);
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [viewerOpen, viewerQR, pendingOrder?.paymentMethod, sessionToken]);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/menu`)
@@ -295,20 +324,23 @@ export function OrderTab({
       rewardDiscount,
     };
 
-    if (qrEligibleCups <= 0) {
-      console.log('qrEligibleCups <= 0，直接提交訂單，不產生 QR');
+    // 儲值金付款一律要求客人掃 QR 確認扣款，即使訂單內容全部是不可抽卡的品項
+    const needsWalletQr = paymentMethod === 'wallet' && finalAmount > 0;
+
+    if (qrEligibleCups <= 0 && !needsWalletQr) {
+      console.log('qrEligibleCups <= 0 且非儲值金付款，直接提交訂單，不產生 QR');
       await submitOrder(orderDraft);
       setGenerating(false);
       return;
     }
 
-    console.log('qrEligibleCups > 0，產生 QR Code');
+    console.log('產生 QR Code（供抽卡機會或儲值金扣款確認）');
 
     const body: Record<string, unknown> = {
       cupCount: qrEligibleCups,
       expiresInDays: 30,
     };
-    if (paymentMethod === 'wallet' && finalAmount > 0) {
+    if (needsWalletQr) {
       body.walletAmount = finalAmount;
     }
     const data = await api<{ success: boolean; qrCode: QRCodeItem }>(
@@ -608,11 +640,12 @@ export function OrderTab({
       {viewerOpen && viewerQR && (
         <QRViewer
           qrCode={viewerQR}
-          cupCount={pendingOrder?.cupCount || 1}
+          cupCount={pendingOrder?.cupCount ?? 1}
           pendingOrder={pendingOrder}
           onCommit={commitAndClose}
           onCancel={cancelViewer}
           committing={committing}
+          walletConfirmed={walletConfirmed}
         />
       )}
     </>
