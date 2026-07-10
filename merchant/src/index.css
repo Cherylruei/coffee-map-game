@@ -696,6 +696,15 @@ body,
   flex-shrink: 0;
   z-index: 1;
 }
+.wallet-scan-waiting {
+  background: #fff7e6;
+  color: #92650a;
+  border-top: 1px solid var(--border);
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  text-align: center;
+  flex-shrink: 0;
+}
 .viewer-qr-card {
   background: var(--card);
   border-radius: 14px;

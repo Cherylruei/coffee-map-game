@@ -595,7 +595,9 @@ app.post('/api/gacha/pull', authenticateToken, gachaPullLimiter, async (req, res
     }
 
     const message = result.wallet_amount > 0
-      ? `已扣款 $${result.wallet_amount}，獲得 ${result.cup_count} 次抽卡機會！`
+      ? (result.cup_count > 0
+        ? `已扣款 $${result.wallet_amount}，獲得 ${result.cup_count} 次抽卡機會！`
+        : `已扣款 $${result.wallet_amount}！`)
       : `已獲得 ${result.cup_count} 次抽卡機會！`;
 
     res.json({
@@ -946,6 +948,32 @@ app.get('/api/admin/qrcode/list', authenticateAdmin, async (req, res) => {
   }
 });
 
+// 7b. 查詢單一 QR Code 使用狀態（供後台輪詢確認儲值金扣款）
+app.get('/api/admin/qrcode/status/:code', authenticateAdmin, async (req, res) => {
+  try {
+    const { code } = req.params;
+    const { data, error } = await supabase
+      .from('qr_codes')
+      .select('used, wallet_amount')
+      .eq('code', code)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) {
+      return res.status(404).json({ success: false, message: '查無此 QR Code' });
+    }
+
+    res.json({
+      success: true,
+      used: !!data.used,
+      walletAmount: data.wallet_amount ?? null,
+    });
+  } catch (error) {
+    console.error('QR status error:', error);
+    res.status(500).json({ success: false, message: '查詢失敗' });
+  }
+});
+
 // 8. 統計數據
 app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
   try {
@@ -1134,12 +1162,15 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
     let customerName = null;
     let customerLineId = null;
     let customerEmployeeId = null;
+    let walletQrData = null;
     if (qrCodes && qrCodes.length > 0) {
       const { data: qrData } = await supabase
         .from('qr_codes')
-        .select('used_by')
+        .select('used, used_by, wallet_amount')
         .eq('code', qrCodes[0])
         .maybeSingle();
+
+      walletQrData = qrData || null;
 
       if (qrData?.used_by) {
         const { data: userData } = await supabase
@@ -1197,6 +1228,48 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
     const totalDiscount = manualDiscount + rewardDiscount;
     const finalAmount = Math.max(0, subtotalAmount - totalDiscount);
 
+    // 儲值金付款防呆：必須確認客人已掃描 QR 完成扣款，且扣款金額與訂單金額相符
+    let walletOrderClaimed = false;
+    if (paymentMethod === 'wallet' && finalAmount > 0) {
+      if (!walletQrData) {
+        return res.status(400).json({
+          success: false,
+          message: '儲值金付款需先產生 QR Code 供客人掃描',
+        });
+      }
+      if (!walletQrData.used) {
+        return res.status(409).json({
+          success: false,
+          message: '客人尚未掃描 QR Code 完成扣款，請提醒客人掃描後再完成訂單',
+        });
+      }
+      if (Number(walletQrData.wallet_amount) !== Number(finalAmount)) {
+        return res.status(409).json({
+          success: false,
+          message: '儲值金扣款金額與訂單金額不符，請重新確認訂單',
+        });
+      }
+
+      // 原子性搶佔（compare-and-swap）：確保同一張已掃描的 QR 只能成功建立一次訂單，
+      // 避免重複送出或多台裝置同時送出同一張 QR 建立多筆訂單
+      const { data: claimedQr, error: claimError } = await supabase
+        .from('qr_codes')
+        .update({ wallet_order_claimed_at: new Date().toISOString() })
+        .eq('code', qrCodes[0])
+        .is('wallet_order_claimed_at', null)
+        .select('code')
+        .maybeSingle();
+
+      if (claimError) throw claimError;
+      if (!claimedQr) {
+        return res.status(409).json({
+          success: false,
+          message: '此 QR Code 已用於建立其他訂單，請勿重複送出',
+        });
+      }
+      walletOrderClaimed = true;
+    }
+
     const { data, error } = await supabase
       .from('orders')
       .insert({
@@ -1221,6 +1294,9 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
 
     if (error) {
       console.error('❌ Supabase 插入錯誤:', error);
+      if (walletOrderClaimed) {
+        await supabase.from('qr_codes').update({ wallet_order_claimed_at: null }).eq('code', qrCodes[0]);
+      }
       throw error;
     }
 
@@ -1242,6 +1318,9 @@ app.post('/api/admin/order', authenticateAdmin, async (req, res) => {
 
       if (rewardUpdateError || !updatedReward) {
         await supabase.from('orders').delete().eq('id', data.id);
+        if (walletOrderClaimed) {
+          await supabase.from('qr_codes').update({ wallet_order_claimed_at: null }).eq('code', qrCodes[0]);
+        }
         return res.status(409).json({ success: false, message: '此兌換碼已被其他訂單使用' });
       }
     }
