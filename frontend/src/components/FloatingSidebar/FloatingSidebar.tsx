@@ -182,14 +182,14 @@ export function FloatingSidebar({
             padding: 0,
           }}
         >
-          <FaRegShareSquare size={24} color='#667eea' />
+          <FaRegShareSquare size={24} color='#a9714a' />
           {shareTokens > 0 && (
             <span
               style={{
                 position: 'absolute',
                 top: '-4px',
                 right: '-4px',
-                background: '#667eea',
+                background: '#a9714a',
                 color: 'white',
                 borderRadius: '50%',
                 width: '18px',
