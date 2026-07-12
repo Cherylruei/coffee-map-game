@@ -4,7 +4,7 @@ import { walletAPI } from '../../utils/api'
 import { trackViewTransactionHistory } from '../../utils/analytics'
 
 interface Transaction {
-  id: number
+  id: string
   amount: number
   type: string
   note: string | null
@@ -23,8 +23,14 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
-function formatAmount(amount: number): string {
-  return amount >= 0 ? `+$${amount}` : `-$${Math.abs(amount)}`
+const CREDIT_TYPES = new Set(['topup', 'refund', 'transfer_in', 'transfer_refund'])
+
+function isCreditTransaction(type: string): boolean {
+  return CREDIT_TYPES.has(type)
+}
+
+function formatAmount(amount: number, isPositive: boolean): string {
+  return isPositive ? `+$${Math.abs(amount)}` : `-$${Math.abs(amount)}`
 }
 
 function getPaymentMethodLabel(paymentMethod?: string | null): string {
@@ -169,11 +175,11 @@ export function TransactionHistory({ isOpen, onClose }: TransactionHistoryProps)
             {!loading && !error && transactions.length > 0 && (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {transactions.map((tx) => {
-                  const isPositive = tx.amount >= 0
+                  const isPositive = isCreditTransaction(tx.type)
                   const paymentMethodLabel = getPaymentMethodLabel(tx.payment_method)
                   return (
                     <motion.li
-                      key={tx.id}
+                      key={`${tx.type}-${tx.id}`}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       style={{
@@ -205,7 +211,7 @@ export function TransactionHistory({ isOpen, onClose }: TransactionHistoryProps)
                           color: isPositive ? '#2ecc71' : '#e74c3c',
                         }}
                       >
-                        {formatAmount(tx.amount)}
+                        {formatAmount(tx.amount, isPositive)}
                       </span>
                     </motion.li>
                   )

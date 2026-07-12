@@ -1878,28 +1878,39 @@ app.post('/api/wallet/topup', authenticateToken, walletTopupLimiter, async (req,
   }
 });
 
-// W3. 用戶查詢錢包餘額 + 最近 20 筆交易
+// W3. 用戶查詢錢包餘額 + 近 30 日消費紀錄（訂單，不限付款方式）+ 儲值紀錄
 app.get('/api/wallet/balance', authenticateToken, async (req, res) => {
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [walletResult, txResult] = await Promise.all([
+    const [walletResult, topupResult, ordersResult] = await Promise.all([
       supabase.from('wallets').select('balance').eq('user_id', req.user.userId).single(),
+      // 'deduct' 類型改由 orders 表提供（見下方 orderTransactions），
+      // 此處保留 topup／refund／transfer_* 等其他錢包異動類型
       supabase
         .from('wallet_transactions')
         .select('id, amount, type, note, order_ref, created_at')
         .eq('user_id', req.user.userId)
+        .neq('type', 'deduct')
         .gte('created_at', thirtyDaysAgo)
         .order('created_at', { ascending: false }),
+      // 消費紀錄改查 orders 表，依客人 LINE ID 過濾，涵蓋現金／LINE Pay／儲值金付款
+      req.user.lineUserId
+        ? supabase
+            .from('orders')
+            .select('id, items, total_amount, payment_method, reward_code, created_at')
+            .eq('customer_line_id', req.user.lineUserId)
+            .eq('status', 'active')
+            .gte('created_at', thirtyDaysAgo)
+            .order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
     ]);
 
-    let transactions = txResult.data || [];
+    const otherTransactions = topupResult.data || [];
 
     // Enrich topup transactions with topup QR payment method (cash / line)
     const topupRefs = [...new Set(
-      transactions
-        .filter(tx => tx.type === 'topup' && tx.order_ref)
-        .map(tx => tx.order_ref)
+      otherTransactions.filter(tx => tx.type === 'topup' && tx.order_ref).map(tx => tx.order_ref)
     )];
 
     const topupPaymentMap = {};
@@ -1916,86 +1927,29 @@ app.get('/api/wallet/balance', authenticateToken, async (req, res) => {
       }
     }
 
-    // Enrich deduct transactions: replace QR-code note with order item names
-    const orderRefs = [...new Set(
-      transactions
-        .filter(tx => tx.type === 'deduct' && tx.order_ref)
-        .map(tx => tx.order_ref)
-    )];
+    // refund / transfer_* 類型不套用儲值付款方式標籤，維持原本無 payment_method 的顯示
+    const otherWithLabels = otherTransactions.map(tx => {
+      if (tx.type !== 'topup') return tx;
+      return {
+        ...tx,
+        payment_method: tx.order_ref ? (topupPaymentMap[tx.order_ref] || 'cash') : 'cash',
+      };
+    });
 
-    if (orderRefs.length > 0) {
-      const orderResults = await Promise.all(
-        orderRefs.map(ref =>
-          supabase
-            .from('orders')
-            .select('qr_codes, items, payment_method, reward_code')
-            .filter('qr_codes', 'cs', JSON.stringify([ref]))
-            .maybeSingle()
-        )
-      );
+    const orderTransactions = (ordersResult.data || []).map(order => ({
+      id: order.id,
+      amount: -Math.abs(Number(order.total_amount) || 0),
+      type: 'deduct',
+      note: order.items?.length
+        ? order.items.map(item => `${item.name}${item.qty > 1 ? ` ×${item.qty}` : ''}`).join('、')
+        : null,
+      order_ref: order.id,
+      created_at: order.created_at,
+      payment_method: order.reward_code ? 'reward_code' : (order.payment_method || 'cash'),
+    }));
 
-      const qrToItems = {};
-      const qrToPayment = {};
-      for (let i = 0; i < orderRefs.length; i++) {
-        const order = orderResults[i].data;
-        if (order?.items?.length) {
-          qrToItems[orderRefs[i]] = order.items
-            .map(item => `${item.name}${item.qty > 1 ? ` ×${item.qty}` : ''}`)
-            .join('、');
-        }
-
-        if (order?.reward_code) {
-          qrToPayment[orderRefs[i]] = 'reward_code';
-        } else if (order?.payment_method === 'line_pay') {
-          qrToPayment[orderRefs[i]] = 'line_pay';
-        } else if (order?.payment_method === 'cash') {
-          qrToPayment[orderRefs[i]] = 'cash';
-        } else {
-          qrToPayment[orderRefs[i]] = 'wallet';
-        }
-      }
-
-      transactions = transactions.map(tx => {
-        if (tx.type === 'deduct' && tx.order_ref && qrToItems[tx.order_ref]) {
-          return {
-            ...tx,
-            note: qrToItems[tx.order_ref],
-            payment_method: qrToPayment[tx.order_ref] || 'wallet',
-          };
-        }
-        // Clean up old QR-code-in-note format for records without a matched order
-        if (tx.type === 'deduct' && tx.note?.startsWith('消費扣款（QR:')) {
-          return { ...tx, note: '消費扣款', payment_method: 'wallet' };
-        }
-        if (tx.type === 'deduct') {
-          return { ...tx, payment_method: 'wallet' };
-        }
-
-        if (tx.type === 'topup') {
-          return {
-            ...tx,
-            payment_method: tx.order_ref ? (topupPaymentMap[tx.order_ref] || 'cash') : 'cash',
-          };
-        }
-
-        return tx;
-      });
-    } else {
-      transactions = transactions.map(tx => {
-        if (tx.type === 'topup') {
-          return {
-            ...tx,
-            payment_method: tx.order_ref ? (topupPaymentMap[tx.order_ref] || 'cash') : 'cash',
-          };
-        }
-
-        if (tx.type === 'deduct') {
-          return { ...tx, payment_method: 'wallet' };
-        }
-
-        return tx;
-      });
-    }
+    const transactions = [...otherWithLabels, ...orderTransactions]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     res.json({
       success: true,
