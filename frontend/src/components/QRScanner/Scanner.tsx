@@ -143,7 +143,7 @@ export function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
                         margin: '16px auto 0',
                         background: 'none',
                         border: 'none',
-                        color: '#667eea',
+                        color: '#a9714a',
                         cursor: 'pointer',
                         fontSize: '14px',
                         textDecoration: 'underline',
@@ -187,7 +187,7 @@ export function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
                                 transition: 'border-color 0.2s',
                                 boxSizing: 'border-box',
                             }}
-                            onFocus={(e) => e.target.style.borderColor = '#667eea'}
+                            onFocus={(e) => e.target.style.borderColor = '#a9714a'}
                             onBlur={(e) => e.target.style.borderColor = '#ddd'}
                             autoFocus={!!cameraError}
                         />
@@ -197,7 +197,7 @@ export function QRScanner({ onScanSuccess, onScanError }: QRScannerProps) {
                             style={{
                                 width: '100%',
                                 padding: '12px',
-                                background: manualCode.trim() ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#ccc',
+                                background: manualCode.trim() ? 'linear-gradient(135deg, #a9714a 0%, #5c3a21 100%)' : '#ccc',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '8px',

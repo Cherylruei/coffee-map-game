@@ -300,7 +300,7 @@ export function ShareButton({ isOpen, onClose }: ShareButtonProps) {
             <button
               onClick={handleWebShare}
               style={{
-                background: '#667eea',
+                background: '#a9714a',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',

@@ -121,7 +121,7 @@
 .menu-cat-title {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #764ba2;
+  color: #5c3a21;
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -179,7 +179,7 @@
 
 /* 客製化 */
 .menu-custom {
-  background: #f0ebfa;
+  background: #f5ece1;
   border-radius: 10px;
   padding: 12px 14px;
   margin-bottom: 4px;
@@ -187,7 +187,7 @@
 .menu-custom-title {
   font-size: 0.82rem;
   font-weight: 700;
-  color: #764ba2;
+  color: #5c3a21;
   margin-bottom: 6px;
 }
 .menu-custom-item {
@@ -196,7 +196,7 @@
 }
 .menu-custom-price {
   font-weight: 600;
-  color: #667eea;
+  color: #a9714a;
 }
 
 /* 提示 */
