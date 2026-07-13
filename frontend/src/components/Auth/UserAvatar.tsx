@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '../../hooks/useAuth';
 
-export function UserAvatar() {
+interface UserAvatarProps {
+  onEditEmployeeIdClick: () => void;
+}
+
+export function UserAvatar({ onEditEmployeeIdClick }: UserAvatarProps) {
   const { user, logout } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -145,6 +149,25 @@ export function UserAvatar() {
                 >
                   {user.customerEmployeeId}
                 </span>
+                <button
+                  type='button'
+                  onClick={() => {
+                    setIsOpen(false);
+                    onEditEmployeeIdClick();
+                  }}
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#a9714a',
+                    background: 'none',
+                    border: 'none',
+                    padding: '4px 0 4px 8px',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  ✏️ 修改
+                </button>
               </div>
             )}
 

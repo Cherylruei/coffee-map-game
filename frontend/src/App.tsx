@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { LoginButton } from './components/Auth/LoginButton';
 import { UserAvatar } from './components/Auth/UserAvatar';
 import { EmployeeIdModal } from './components/Auth/EmployeeIdModal';
+import { EditEmployeeIdModal } from './components/Auth/EditEmployeeIdModal';
 import { QRScanner } from './components/QRScanner/Scanner';
 import { GachaAnimation } from './components/Card/GachaAnimation';
 import { TreasureBox } from './components/Collection/TreasureBox';
@@ -83,6 +84,8 @@ function App() {
   const [walletPaymentLoading, setWalletPaymentLoading] = useState(false);
   // 錢包轉帳彈窗
   const [showTransferModal, setShowTransferModal] = useState(false);
+  // 修改員工編號彈窗
+  const [showEditEmployeeIdModal, setShowEditEmployeeIdModal] = useState(false);
   const [pendingClaimToken, setPendingClaimToken] = useState<string | null>(null);
   // URL state: ?tab=history 顯示消費紀錄
   const [showHistory, setShowHistory] = useState(() => {
@@ -106,8 +109,11 @@ function App() {
         setPendingShares(response.data.pendingShares || {});
         setShareTokens(response.data.shareTokens);
         setDrawChances(response.data.drawChances || 0);
-        // 同步會員員編（舊快取可能尚無此欄位）
-        updateUser({ customerEmployeeId: response.data.customerEmployeeId ?? null });
+        // 同步會員員編與下次可修改時間（舊快取可能尚無此欄位）
+        updateUser({
+          customerEmployeeId: response.data.customerEmployeeId ?? null,
+          customerEmployeeIdEditableAt: response.data.customerEmployeeIdEditableAt ?? null,
+        });
         setEmployeeIdReady(true);
       }
     } catch (error) {
@@ -414,12 +420,26 @@ function App() {
   return (
     <div className='app'>
       {/* 右上角頭像 */}
-      <UserAvatar />
+      <UserAvatar onEditEmployeeIdClick={() => setShowEditEmployeeIdModal(true)} />
 
-      {/* 員工編號登記彈窗（強制必填、不可關閉、不可修改） */}
+      {/* 員工編號登記彈窗（強制必填、不可關閉、登記後可每 30 天修改一次） */}
       {isAuthenticated && employeeIdReady && user && !user.customerEmployeeId && (
         <EmployeeIdModal
           onRegistered={(customerEmployeeId) => updateUser({ customerEmployeeId })}
+        />
+      )}
+
+      {/* 修改員工編號彈窗（可關閉） */}
+      {showEditEmployeeIdModal && user?.customerEmployeeId && (
+        <EditEmployeeIdModal
+          currentEmployeeId={user.customerEmployeeId}
+          editableAt={user.customerEmployeeIdEditableAt ?? null}
+          onClose={() => setShowEditEmployeeIdModal(false)}
+          onChanged={(customerEmployeeId) => {
+            updateUser({ customerEmployeeId });
+            // 重新載入以取得正確的下次可修改時間（後端才是唯一真相來源）
+            loadCollection();
+          }}
         />
       )}
 

@@ -14,8 +14,10 @@ export interface User {
     pictureUrl: string;
     shareTokens: number;
     createdAt: string;
-    // 會員自行登記的員工編號（強制必填、不可修改）
+    // 會員自行登記的員工編號（強制必填，登記後每 30 天可修改一次）
     customerEmployeeId?: string | null;
+    // 下次可修改員編的時間（ISO 字串）；null 表示現在就能修改
+    customerEmployeeIdEditableAt?: string | null;
 }
 
 export interface Collection {
