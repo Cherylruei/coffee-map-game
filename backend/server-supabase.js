@@ -12,6 +12,7 @@ const fetch = require('cross-fetch');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const {
   validateCustomerEmployeeId,
+  checkChangeCooldown,
   resolveRegistration,
   isUniqueViolation,
 } = require('./lib/customerEmployeeId');
@@ -348,9 +349,35 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('share_tokens, draw_chances, customer_employee_id')
+      .select('id, share_tokens, draw_chances, customer_employee_id')
       .eq('id', req.user.userId)
-      .single();
+      .maybeSingle();
+
+    // 帳號不存在（例如資料被重置/刪除，但瀏覽器仍持有舊 JWT）→ 要求重新登入
+    // 前端 axios 攔截器收到 401 會自動清除登入狀態並導回登入頁
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        accountMissing: true,
+        message: '帳號不存在或已失效，請重新登入',
+      });
+    }
+
+    // 員編已登記過才需要算下次可修改時間（30 天冷卻期）
+    // 冷卻期只從「上一次實際修改」起算；首次登記(old=NULL)不算，故登記後仍可立即修正一次
+    let customerEmployeeIdEditableAt = null;
+    if (user?.customer_employee_id) {
+      const { data: lastChange } = await supabase
+        .from('customer_employee_id_audit')
+        .select('changed_at')
+        .eq('user_id', req.user.userId)
+        .not('old_employee_id', 'is', null)
+        .order('changed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const cooldown = checkChangeCooldown(lastChange?.changed_at ?? null);
+      customerEmployeeIdEditableAt = cooldown.ok ? null : cooldown.nextEligibleAt;
+    }
 
     const { data: collections } = await supabase
       .from('collection')
@@ -384,6 +411,7 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
       shareTokens: user?.share_tokens || 3,
       drawChances: user?.draw_chances || 0,
       customerEmployeeId: user?.customer_employee_id ?? null,
+      customerEmployeeIdEditableAt,
     });
   } catch (error) {
     console.error('Get collection error:', error);
@@ -391,7 +419,7 @@ app.get('/api/user/collection', authenticateToken, async (req, res) => {
   }
 });
 
-// 2.05 登記會員員工編號（強制必填、不可修改、全系統唯一）
+// 2.05 登記/修改會員員工編號（強制必填、全系統唯一、修改需間隔 30 天）
 app.post('/api/user/customer-employee-id', authenticateToken, customerEmployeeIdLimiter, async (req, res) => {
   try {
     // 1. 格式驗證
@@ -401,31 +429,61 @@ app.post('/api/user/customer-employee-id', authenticateToken, customerEmployeeId
     }
     const value = validation.value;
 
-    // 2. 讀取目前已登記員編 + 是否被其他帳號占用
-    const [{ data: current }, { data: taken }] = await Promise.all([
+    // 2. 讀取目前已登記員編 + 是否被其他帳號占用 + 最近一次登記/修改時間（冷卻期依據）
+    const [{ data: current }, { data: taken }, { data: lastChange }] = await Promise.all([
       supabase
         .from('users')
-        .select('customer_employee_id')
+        .select('id, customer_employee_id')
         .eq('id', req.user.userId)
-        .single(),
+        .maybeSingle(),
       supabase
         .from('users')
         .select('id')
         .eq('customer_employee_id', value)
         .neq('id', req.user.userId)
         .maybeSingle(),
+      supabase
+        .from('customer_employee_id_audit')
+        .select('changed_at')
+        .eq('user_id', req.user.userId)
+        // 只看「實際修改」（old_employee_id 有值）；首次登記(old=NULL)不算，
+        // 讓客人登記後仍可立即修正一次，之後每次修改才鎖 30 天
+        .not('old_employee_id', 'is', null)
+        .order('changed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
-    // 3. 決策：已登記不可修改 / 已被占用
+    // 帳號不存在（例如資料被重置/刪除，但瀏覽器仍持有舊 JWT）→ 要求重新登入
+    // 避免對不存在的 id 做 UPDATE（更新 0 筆卻回傳成功）而陷入彈窗無限迴圈
+    if (!current) {
+      return res.status(401).json({
+        success: false,
+        accountMissing: true,
+        message: '帳號不存在或已失效，請重新登入',
+      });
+    }
+
+    // 3. 決策：冷卻期未到 / 已被占用 / 重複送出同一個員編（冪等成功）/ 可登記或修改
     const decision = resolveRegistration({
       currentEmployeeId: current?.customer_employee_id ?? null,
       takenByOther: !!taken,
+      value,
+      lastChangedAt: lastChange?.changed_at ?? null,
     });
     if (!decision.ok) {
       const body = { success: false, message: decision.message };
       if (decision.customerEmployeeId) body.customerEmployeeId = decision.customerEmployeeId;
+      if (decision.nextEligibleAt) body.nextEligibleAt = decision.nextEligibleAt;
       return res.status(decision.status).json(body);
     }
+
+    // 送出值跟已登記的值相同：冪等成功，不需要寫入也不需要留稽核紀錄
+    if (decision.alreadyRegistered) {
+      return res.json({ success: true, customerEmployeeId: value });
+    }
+
+    const oldValue = current?.customer_employee_id ?? null;
 
     // 4. 寫入（競態下由 DB 部分唯一索引擋下）
     const { error } = await supabase
@@ -439,6 +497,13 @@ app.post('/api/user/customer-employee-id', authenticateToken, customerEmployeeId
       }
       throw error;
     }
+
+    // 5. 留下稽核紀錄（誰、何時、從哪個值改成哪個值）
+    await supabase.from('customer_employee_id_audit').insert({
+      user_id: req.user.userId,
+      old_employee_id: oldValue,
+      new_employee_id: value,
+    });
 
     res.json({ success: true, customerEmployeeId: value });
   } catch (error) {

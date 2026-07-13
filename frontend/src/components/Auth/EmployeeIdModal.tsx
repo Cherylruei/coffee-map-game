@@ -34,9 +34,20 @@ export function EmployeeIdModal({ onRegistered }: EmployeeIdModalProps) {
                 setError(res.data.message || '登記失敗，請稍後再試');
             }
         } catch (err) {
-            const msg = (err as { response?: { data?: { message?: string } } })
-                .response?.data?.message;
-            setError(msg || '登記失敗，請稍後再試');
+            const data = (
+                err as {
+                    response?: {
+                        data?: { message?: string; customerEmployeeId?: string };
+                    };
+                }
+            ).response?.data;
+            // 該帳號其實已登記過（例如本機快取未同步），直接同步狀態關閉彈窗，
+            // 避免客人卡在無法通過的錯誤畫面出不去
+            if (data?.customerEmployeeId) {
+                onRegistered(data.customerEmployeeId);
+                return;
+            }
+            setError(data?.message || '登記失敗，請稍後再試');
         } finally {
             setLoading(false);
         }
@@ -94,7 +105,7 @@ export function EmployeeIdModal({ onRegistered }: EmployeeIdModalProps) {
                 </button>
 
                 <p style={{ color: '#999', fontSize: '12px', marginTop: '10px' }}>
-                    ⚠️ 員工編號登記後無法修改，請確認填寫正確
+                    ⚠️ 請確認填寫正確；登記後可再修正，每次修改後需間隔 30 天
                 </p>
             </div>
         </div>
