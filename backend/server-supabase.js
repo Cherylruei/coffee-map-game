@@ -212,17 +212,44 @@ async function getRewardCodeWithUser(code) {
 }
 
 // JWT 驗證中間件（一般用戶）
+// 除了驗證 JWT 簽章，還會確認該帳號在資料庫中仍存在：
+// 避免「資料被重置/刪除但瀏覽器仍持有舊 JWT」的幽靈帳號通過驗證，
+// 導致掃 QR、抽卡、錢包等操作靜默失敗（QR 被燒掉卻沒給到抽卡次數等）。
+// 帳號不存在時回 401 accountMissing，前端 axios 攔截器會自動登出並導回登入頁，
+// 重新以 LINE 登入即會重建帳號。
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token)
     return res.status(401).json({ success: false, message: '未授權' });
 
-  jwt.verify(token, CONFIG.JWT_SECRET, (err, user) => {
+  jwt.verify(token, CONFIG.JWT_SECRET, async (err, user) => {
     if (err)
       return res.status(403).json({ success: false, message: 'Token 無效' });
-    req.user = user;
-    next();
+
+    try {
+      const { data: account, error } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', user.userId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!account) {
+        return res.status(401).json({
+          success: false,
+          accountMissing: true,
+          message: '帳號不存在或已失效，請重新登入',
+        });
+      }
+
+      req.user = user;
+      next();
+    } catch (e) {
+      console.error('authenticateToken account check error:', e);
+      return res.status(500).json({ success: false, message: '驗證失敗，請稍後再試' });
+    }
   });
 }
 
