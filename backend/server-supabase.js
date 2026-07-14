@@ -2405,7 +2405,34 @@ app.get('/api/admin/wallet-transactions', authenticateAdmin, async (req, res) =>
     const { data, error } = await query;
     if (error) throw error;
 
-    res.json({ success: true, transactions: data || [] });
+    const transactions = data || [];
+
+    // 為 topup 類型附上儲值 QR 的付款方式（cash / line），讓統計與 CSV 能區分
+    // LINE Pay 與現金儲值入帳。refund / transfer_* 類型維持無 payment_method。
+    const topupRefs = [...new Set(
+      transactions.filter((tx) => tx.type === 'topup' && tx.order_ref).map((tx) => tx.order_ref)
+    )];
+
+    const topupPaymentMap = {};
+    if (topupRefs.length > 0) {
+      const { data: topupRows } = await supabase
+        .from('topup_qr_codes')
+        .select('code, payment_method')
+        .in('code', topupRefs);
+      for (const row of topupRows || []) {
+        if (row?.code) topupPaymentMap[row.code] = row.payment_method || 'cash';
+      }
+    }
+
+    const enriched = transactions.map((tx) => {
+      if (tx.type !== 'topup') return tx;
+      return {
+        ...tx,
+        payment_method: tx.order_ref ? (topupPaymentMap[tx.order_ref] || 'cash') : 'cash',
+      };
+    });
+
+    res.json({ success: true, transactions: enriched });
   } catch (error) {
     console.error('Wallet transactions error:', error);
     res.status(500).json({ success: false, message: '查詢失敗' });

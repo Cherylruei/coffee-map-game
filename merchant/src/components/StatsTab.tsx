@@ -27,6 +27,8 @@ interface WalletTransaction {
   note?: string | null;
   order_ref?: string | null;
   created_at: string;
+  // 儲值入帳（topup）附帶的付款方式：line = LINE Pay，其餘視為現金
+  payment_method?: string | null;
   users?: { display_name: string | null; line_user_id: string | null } | null;
 }
 
@@ -143,13 +145,18 @@ function filterTopupByPeriod(topups: TopupRecord[], period: Period): TopupRecord
 }
 
 function computeTopupSummary(topups: TopupRecord[]) {
-  let total = 0, cashAmount = 0, lineAmount = 0;
+  let total = 0, cashAmount = 0, lineAmount = 0, cashCount = 0, lineCount = 0;
   for (const t of topups) {
     total += t.amount;
-    if (t.payment_method === 'line') lineAmount += t.amount;
-    else cashAmount += t.amount;
+    if (t.payment_method === 'line') {
+      lineAmount += t.amount;
+      lineCount++;
+    } else {
+      cashAmount += t.amount;
+      cashCount++;
+    }
   }
-  return { total, cashAmount, lineAmount, count: topups.length };
+  return { total, cashAmount, lineAmount, cashCount, lineCount, count: topups.length };
 }
 
 function periodToDateRange(period: Period): { start?: string; end?: string } {
@@ -180,6 +187,15 @@ function paymentLabel(method: string | null | undefined): string {
   if (method === 'wallet') return '儲值金';
   if (method === 'cash') return '現金';
   return '未選擇';
+}
+
+// 儲值明細的「類型」欄：儲值入帳再依付款方式細分為 LINE Pay / 現金
+function walletTxTypeLabel(tx: WalletTransaction): string {
+  if (tx.type === 'topup') {
+    return tx.payment_method === 'line' ? '儲值（LINE Pay）' : '儲值（現金）';
+  }
+  if (tx.type === 'refund') return '退款';
+  return '消費';
 }
 
 function fmtDateOnly(val: string | null | undefined): string {
@@ -275,7 +291,7 @@ function exportCSV(
       fmtDate(tx.created_at),
       csvSafe(tx.users?.display_name ?? '—'),
       csvSafe(tx.users?.line_user_id ?? '—'),
-      tx.type === 'topup' ? '儲值' : tx.type === 'refund' ? '退款' : '消費',
+      walletTxTypeLabel(tx),
       String(Math.abs(tx.amount)),
       csvSafe(tx.note ?? ''),
     ]);
@@ -537,9 +553,15 @@ export function StatsTab({ sessionToken, refreshSignal }: Props) {
               </span>
             </div>
             <div className='inv-breakdown-row'>
-              <span>🏦 儲值入帳</span>
+              <span>🏦 儲值入帳（LINE Pay）</span>
               <span>
-                {topupSummary.count} 筆・${topupSummary.total.toLocaleString()}
+                {topupSummary.lineCount} 筆・${topupSummary.lineAmount.toLocaleString()}
+              </span>
+            </div>
+            <div className='inv-breakdown-row'>
+              <span>🏦 儲值入帳（現金）</span>
+              <span>
+                {topupSummary.cashCount} 筆・${topupSummary.cashAmount.toLocaleString()}
               </span>
             </div>
             <div className='inv-breakdown-row'>
