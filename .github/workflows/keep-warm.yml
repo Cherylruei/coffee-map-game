@@ -1,0 +1,18 @@
+name: Keep backend warm
+
+# 每 5 分鐘打一次後端 /health，避免 Vercel serverless function 冷掉，
+# 讓真實使用者（掃 QR / LINE 登入）不必等冷啟動。
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # 允許手動觸發測試
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          curl --silent --show-error --fail --max-time 30 \
+            https://coffee-map-game-backend.vercel.app/health \
+            && echo "  ✅ backend warm"

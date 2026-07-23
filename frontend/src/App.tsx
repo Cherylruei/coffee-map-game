@@ -15,6 +15,7 @@ import { WalletTransferModal } from './components/Wallet/WalletTransferModal';
 import { WalletTransferClaimModal } from './components/Wallet/WalletTransferClaimModal';
 import { TransactionHistory } from './components/Wallet/TransactionHistory';
 import { Dialog } from './components/UI/Dialog';
+import { LoadingOverlay } from './components/UI/LoadingOverlay';
 import { useAuthStore } from './hooks/useAuth';
 import { useDialog } from './hooks/useDialog';
 import { supabase } from './utils/supabase';
@@ -94,6 +95,12 @@ function App() {
   });
   // 記錄抽卡前的收藏數，判斷是否為第一張
   const collectionCountRef = useRef(0);
+  // 全域 loading 遮罩訊息（null = 不顯示）。
+  // 初始若 URL 帶 LINE 的 ?code=，代表登入處理中，立即顯示「登入中」避免閃現登入畫面。
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('code') ? '登入中…' : null;
+  });
 
   const {
     balance: walletBalance,
@@ -193,9 +200,10 @@ function App() {
             setAuth(response.data.user, response.data.token);
             if (response.data.isNewUser) trackSignUp('LINE');
             trackLoginSuccess('LINE');
-            await loadCollection();
+            // loadCollection 與 fetchBalance 互不相依，平行送出省一趟往返
+            await Promise.all([loadCollection(), fetchBalance()]);
+            // 需在收藏載入後才兌換待處理 QR，確保 drawChances 以兌換結果為準
             await redeemPendingQR();
-            fetchBalance();
             // 登入後若有待領取的轉帳，自動觸發
             const pendingTransfer = localStorage.getItem(PENDING_TRANSFER_KEY);
             if (pendingTransfer) {
@@ -206,6 +214,8 @@ function App() {
         } catch (error) {
           console.error('LINE Login 失敗:', error);
           showDialog({ type: 'error', title: '登入失敗，請稍後再試' });
+        } finally {
+          setLoadingMessage(null);
         }
       })();
     } else if (shareCode && isAuthenticated) {
@@ -293,6 +303,7 @@ function App() {
 
     const qrCode = extractQRCode(rawQR);
     let openedModal = false; // 本地旗標，避免 React state 非同步導致誤判
+    setLoadingMessage('讀取中…'); // 掃到後立即顯示遮罩，避免使用者以為沒反應
 
     try {
       // 1. 先查詢 QR 資訊（不標記已使用）
@@ -342,6 +353,7 @@ function App() {
       const msg = error.response?.data?.message || '兌換失敗，請稍後再試';
       showDialog({ type: 'error', title: msg });
     } finally {
+      setLoadingMessage(null); // 網路處理結束（含開啟彈窗前）即關閉遮罩
       // 開啟彈窗時保持鎖定，其餘情況皆解鎖
       if (!openedModal) qrCodeProcessing = false;
     }
@@ -617,6 +629,9 @@ function App() {
 
       {/* 全域確認對話方塊 */}
       <Dialog />
+
+      {/* 全域 loading 遮罩（登入中 / QR 讀取中） */}
+      {loadingMessage && <LoadingOverlay message={loadingMessage} />}
     </div>
   );
 }
